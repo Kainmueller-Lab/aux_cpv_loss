@@ -2,13 +2,13 @@ import tensorflow as tf
 import numpy as np
 
 def conv_pass(
-        fmaps_in,
+        fmaps_in, *,
         kernel_size,
         num_fmaps,
         num_repetitions,
-        activation='relu',
-        padding='valid',
-        name='conv_pass'):
+        activation,
+        padding,
+        name):
     '''Create a convolution pass::
 
         f_in --> f_1 --> ... --> f_n
@@ -149,17 +149,43 @@ def crop_spatial(fmaps_in, shape):
 
     return fmaps
 
+def crop(a, shape):
+    '''Crop a to a new shape, centered in a.
+
+    Args:
+
+        a:
+
+            The input tensor.
+
+        shape:
+
+            A list (not a tensor) with the requested shape.
+    '''
+
+    in_shape = a.get_shape().as_list()
+
+    offset = list([
+        (i - s)//2
+        for i, s in zip(in_shape, shape)
+    ])
+
+    b = tf.slice(a, offset, shape)
+
+    return b
+
 def unet(
-        fmaps_in,
+        fmaps_in, *,
         num_fmaps,
         fmap_inc_factors,
         fmap_dec_factors,
         downsample_factors,
-        activation='relu',
-        padding='valid',
-        num_repetitions=2,
-        layer=0,
-        upsampling="trans_conv"):
+        activation,
+        padding,
+        kernel_size,
+        num_repetitions,
+        upsampling="trans_conv",
+        layer=0):
     '''Create a 2D or 3D U-Net::
 
         f_in --> f_left --------------------------->> f_right--> f_out
@@ -219,12 +245,13 @@ def unet(
     # convolve
     f_left = conv_pass(
         fmaps_in,
-        kernel_size=3,
         num_fmaps=num_fmaps,
+        kernel_size=kernel_size,
         num_repetitions=num_repetitions,
         activation=activation,
         padding=padding,
         name='unet_layer_%i_left'%layer)
+    print(prefix + "f_left: " + str(f_left.shape))
 
     # last layer does not recurse
     bottom_layer = (layer == len(downsample_factors))
@@ -248,9 +275,12 @@ def unet(
         fmap_dec_factors=fmap_dec_factors,
         downsample_factors=downsample_factors,
         activation=activation,
-        layer=layer+1,
+        padding=padding,
+        kernel_size=kernel_size,
+        num_repetitions=num_repetitions,
         upsampling=upsampling,
-        padding=padding)
+        layer=layer+1,
+)
 
     print(prefix + "g_out: " + str(g_out.shape))
 
@@ -281,9 +311,10 @@ def unet(
     # convolve
     f_out = conv_pass(
         f_right,
-        kernel_size=3,
+        kernel_size=kernel_size,
         num_fmaps=num_fmaps_up,
         num_repetitions=num_repetitions,
+        activation=activation,
         padding=padding,
         name='unet_layer_%i_right'%layer)
 

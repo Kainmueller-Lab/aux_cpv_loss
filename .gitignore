@@ -1,1 +1,13 @@
 *.pyc
+*egg-info/
+train_net.meta
+train_net_config.json
+train_net_names.json
+test_net.meta
+test_net_config.json
+test_net_names.json
+snapshots/
+data/
+data
+log.txt
+flycheck*
