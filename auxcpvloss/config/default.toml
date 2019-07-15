@@ -1,0 +1,34 @@
+[data]
+train_data = '/home/peter/data/datasets/data_L1/data_L1_140/train'
+test_data = '/home/peter/data/datasets/data_L1/data_L1_140/test'
+data_format = 'hdf'
+
+[model]
+train_net_name = 'train_net'
+test_net_name = 'test_net'
+train_input_shape = [230,230,200]
+test_input_shape = [230,230,200]
+num_fmaps = 12
+fmap_inc_factors = [2,2,2]
+fmap_dec_factors = [2,2,2]
+downsample_factors = [[2,2,2],[2,2,2],[2,2,2]]
+
+[optimizer]
+optimizer = 'Adam'
+lr = 0.0001
+
+[training]
+batch_size = 1
+num_gpus = 1
+num_workers = 10
+iteration = 200000
+checkpoints = 10000
+snapshots = 1000
+profiling = 50
+folds = '12'
+
+[testing]
+num_workers = 10
+
+[evaluate]
+metric = 'confusion_matrix/th_0_5/fscore'

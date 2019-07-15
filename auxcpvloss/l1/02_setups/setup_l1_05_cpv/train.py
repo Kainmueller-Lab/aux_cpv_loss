@@ -85,18 +85,16 @@ def train_until(name, **kwargs):
     # ASSEMBLE TRAINING PIPELINE #
     ##############################
 
-    inDirs = ["data/train"]
+
     fls = []
     shapes = []
-    for d in inDirs:
-        for f in os.listdir(d):
-            if f.endswith(".hdf"):
-                fls.append(os.path.splitext(os.path.join(d,f))[0])
-                vol = h5py.File(os.path.join(d, f), 'r')['volumes/raw']
-                print(f, vol.shape, vol.dtype)
-                shapes.append(vol.shape)
-                if vol.dtype != np.float32:
-                    print("please convert to float32")
+    for f in kwargs['data_files']:
+        fls.append(os.path.splitext(f)[0])
+        vol = h5py.File(f, 'r')['volumes/raw']
+        print(f, vol.shape, vol.dtype)
+        shapes.append(vol.shape)
+        if vol.dtype != np.float32:
+            print("please convert to float32")
     ln = len(fls)
     print("first 5 files: ", fls[0:4])
 

@@ -6,8 +6,8 @@ import tensorflow as tf
 from auxcpvloss import util
 
 
-def create_network(name,
-                   **kwargs):
+def mk_net(name,
+           **kwargs):
 
     tf.reset_default_graph()
 

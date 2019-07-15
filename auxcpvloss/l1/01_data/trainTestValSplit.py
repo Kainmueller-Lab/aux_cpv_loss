@@ -10,11 +10,17 @@ def main():
     args = parser.parse_args()
 
     trainD = os.path.join(args.out_dir, "train")
+    trainD_f1 = os.path.join(args.out_dir, "train_fold1")
+    trainD_f2 = os.path.join(args.out_dir, "train_fold2")
+    trainD_f3 = os.path.join(args.out_dir, "train_fold3")
     testD = os.path.join(args.out_dir, "test")
     valD = os.path.join(args.out_dir, "val")
 
     os.makedirs(args.out_dir, exist_ok=True)
     os.makedirs(trainD, exist_ok=True)
+    os.makedirs(trainD_f1, exist_ok=True)
+    os.makedirs(trainD_f2, exist_ok=True)
+    os.makedirs(trainD_f3, exist_ok=True)
     os.makedirs(testD, exist_ok=True)
     os.makedirs(valD, exist_ok=True)
 
@@ -45,6 +51,36 @@ def main():
         "pha4I2L_0408071",
     ]
 
+    trainFold1Fls = [
+        "C18G1_2L1_1",
+        "cnd1threeL1_1213061",
+        "egl5L1_0606074",
+        "hlh1fourL1_0417071",
+        "hlh1fourL1_0417076",
+        "pha4A7L1_1213061",
+        "pha4B2L1_0125072",
+    ]
+
+    trainFold2Fls = [
+        "cnd1threeL1_1229062",
+        "cnd1threeL1_1229063",
+        "eft3RW10035L1_0125073",
+        "elt3L1_0503072",
+        "hlh1fourL1_0417077",
+        "pha4A7L1_1213062",
+        "pha4I2L_0408071",
+    ]
+
+    trainFold3Fls = [
+        "cnd1threeL1_1228061",
+        "cnd1threeL1_1229061",
+        "elt3L1_0504073",
+        "hlh1fourL1_0417078",
+        "pha4A7L1_1213064",
+        "pha4I2L_0408073",
+        "unc54L1_0123071",
+    ]
+
     testFls = [
         "eft3RW10035L1_0125071",
         "eft3RW10035L1_0125072",
@@ -60,6 +96,18 @@ def main():
     for fl in trainFls:
         shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), trainD)
         shutil.copy2(os.path.join(args.in_dir, fl+".csv"), trainD)
+
+    for fl in trainFold1Fls:
+        shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), trainD_f1)
+        shutil.copy2(os.path.join(args.in_dir, fl+".csv"), trainD_f1)
+
+    for fl in trainFold2Fls:
+        shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), trainD_f2)
+        shutil.copy2(os.path.join(args.in_dir, fl+".csv"), trainD_f2)
+
+    for fl in trainFold3Fls:
+        shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), trainD_f3)
+        shutil.copy2(os.path.join(args.in_dir, fl+".csv"), trainD_f3)
 
     for fl in testFls:
         shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), testD)
