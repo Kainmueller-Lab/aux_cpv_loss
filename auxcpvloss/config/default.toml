@@ -1,7 +1,20 @@
+[general]
+# error   40
+# warning 30
+# info    20
+# debug   10
+logging = 10
+debug = true
+overwrite = false
+
 [data]
+# use absolute paths
 train_data = '/home/peter/data/datasets/data_L1/data_L1_140/train'
+val_data = '/home/peter/data/datasets/data_L1/data_L1_140/train'
 test_data = '/home/peter/data/datasets/data_L1/data_L1_140/test'
-data_format = 'hdf'
+input_format = 'hdf'
+gt_key = 'volumes/gt_labels'
+voxel_size = [1,1,1]
 
 [model]
 train_net_name = 'train_net'
@@ -12,23 +25,68 @@ num_fmaps = 12
 fmap_inc_factors = [2,2,2]
 fmap_dec_factors = [2,2,2]
 downsample_factors = [[2,2,2],[2,2,2],[2,2,2]]
+activation = 'relu'
+padding = 'valid'
+kernel_size = 3
+num_repetitions = 2
+upsampling = 'trans_conv'
+loss_affs_coeff = 10
+loss_fgbg_coeff = 1
+loss_cpv_coeff = 25
 
 [optimizer]
 optimizer = 'Adam'
+loss = 'ce'
 lr = 0.0001
 
 [training]
 batch_size = 1
 num_gpus = 1
 num_workers = 10
-iteration = 200000
-checkpoints = 10000
-snapshots = 1000
-profiling = 50
+cache_size = 40
+max_iterations = 20
+checkpoints = 10
+snapshots = 5
+profiling = 5
 folds = '12'
 
-[testing]
-num_workers = 10
+[training.augmentation.elastic]
+control_point_spacing = [10,10,10]
+jitter_sigma = [1,1,1]
+rotation_min = -45
+rotation_max = 45
 
-[evaluate]
+[training.augmentation.intensity]
+scale = [0.9, 1.1]
+shift = [-0.1, 0.1]
+
+[training.augmentation.simple]
+# mirror = [0, 1, 2]
+# tranpose = [0, 1, 2]
+
+[prediction]
+num_workers = 10
+output_format = 'zarr'
+
+[validation]
+fold = '3'
+
+[evaluation]
 metric = 'confusion_matrix/th_0_5/fscore'
+res_key = 'volumes/watershed_seg_fg_dilated'
+num_workers = 8
+
+[preprocessing]
+
+[postprocessing]
+
+[postprocessing.watershed]
+num_dilations = 1
+fg_thresh = 0.95
+aff_thresh = 0.98
+aff_key = "volumes/pred_affs"
+fgbg_key = "volumes/pred_fgbg"
+raw_key = "volumes/raw_cropped"
+output_format = 'hdf'
+include_gt = true
+num_workers = 8
