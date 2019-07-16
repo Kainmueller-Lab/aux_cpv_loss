@@ -6,13 +6,12 @@ import tensorflow as tf
 from auxcpvloss import util
 
 
-def mk_net(name,
-           **kwargs):
+def mk_net(**kwargs):
 
     tf.reset_default_graph()
 
     input_shape = kwargs['input_shape']
-    if isinstance(input_shape, tuple):
+    if not isinstance(input_shape, tuple):
         input_shape = tuple(input_shape)
 
     # create a placeholder for the 3D raw input tensor
@@ -51,6 +50,7 @@ def mk_net(name,
     pred_affs, pred_fgbg, pred_cpv = tf.split(pred, [3, 1, 3], 0)
 
     raw_cropped = util.crop(raw, output_shape)
+    raw_cropped = tf.expand_dims(raw_cropped, 0)
 
     # create a placeholder for the corresponding ground-truth affinities
     gt_affs = tf.placeholder(tf.float32, shape=pred_affs.get_shape(),
@@ -112,10 +112,10 @@ def mk_net(name,
 
     # store the network in a meta-graph file
     tf.train.export_meta_graph(filename=os.path.join(kwargs['output_folder'],
-                                                     name + '.meta'))
+                                                     kwargs['name'] +'.meta'))
 
     # store network configuration for use in train and predict scripts
-    fn = os.path.join(kwargs['output_folder'], name)
+    fn = os.path.join(kwargs['output_folder'], kwargs['name'])
     names = {
         'raw': raw.name,
         'raw_cropped': raw_cropped.name,
@@ -163,8 +163,9 @@ def main():
               'loss_affs_coeff': 10,
               'loss_fgbg_coeff': 1,
               'loss_cpv_coeff': 25,
+              'name': 'train_net'
     }
-    create_network('train_net', **kwargs)
+    create_network(**kwargs)
 
 
 if __name__ == "__main__":

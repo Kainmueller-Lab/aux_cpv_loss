@@ -9,5 +9,6 @@ test_net_names.json
 snapshots/
 data/
 data
+experiments/
 log.txt
 flycheck*

@@ -14,8 +14,8 @@ import gunpowder as gp
 logger = logging.getLogger(__name__)
 
 
-def train_until(name, **kwargs):
-    if tf.train.latest_checkpoint('.'):
+def train_until(**kwargs):
+    if tf.train.latest_checkpoint(kwargs['output_folder']):
         trained_until = int(
             tf.train.latest_checkpoint(kwargs['output_folder']).split('_')[-1])
     else:
@@ -46,13 +46,13 @@ def train_until(name, **kwargs):
 
 
     with open(os.path.join(kwargs['output_folder'],
-                           name + '_config.json'), 'r') as f:
+                           kwargs['name'] + '_config.json'), 'r') as f:
         net_config = json.load(f)
     with open(os.path.join(kwargs['output_folder'],
-                           name + '_names.json'), 'r') as f:
+                           kwargs['name']  + '_names.json'), 'r') as f:
         net_names = json.load(f)
 
-    voxel_size = gp.Coordinate((1, 1, 1))
+    voxel_size = gp.Coordinate(kwargs['voxel_size'])
     input_shape_world = gp.Coordinate(net_config['input_shape'])*voxel_size
     output_shape_world = gp.Coordinate(net_config['output_shape'])*voxel_size
 
@@ -100,6 +100,8 @@ def train_until(name, **kwargs):
 
     # padR = 46
     # padGT = 32
+
+    augmentation = kwargs['augmentation']
     pipeline = (
         tuple(
             # read batches from the HDF5 file
@@ -144,20 +146,22 @@ def train_until(name, **kwargs):
 
         # elastically deform the batch
         gp.ElasticAugment(
-            [10,10,10],
-            [1,1,1],
-            [np.pi/4,np.pi/4]) +
+            augmentation['elastic']['control_point_spacing'],
+            augmentation['elastic']['jitter_sigma'],
+            [augmentation['elastic']['rotation_min']*np.pi/180.0,
+             augmentation['elastic']['rotation_max']*np.pi/180.0]) +
 
         # apply transpose and mirror augmentations
-        gp.SimpleAugment() +
+        gp.SimpleAugment(mirror_only=augmentation['simple'].get("mirror"),
+                         transpose_only=augmentation['simple'].get("transpose")) +
 
         # # scale and shift the intensity of the raw array
         gp.IntensityAugment(
             raw,
-            scale_min=0.9,
-            scale_max=1.1,
-            shift_min=-0.1,
-            shift_max=0.1,
+            scale_min=augmentation['intensity']['scale'][0],
+            scale_max=augmentation['intensity']['scale'][1],
+            shift_min=augmentation['intensity']['shift'][0],
+            shift_max=augmentation['intensity']['shift'][1],
             z_section_wise=False) +
 
         # grow a boundary between labels
@@ -187,14 +191,14 @@ def train_until(name, **kwargs):
             loss_weights_fgbg) +
 
         # pre-cache batches from the point upstream
-        # gp.PreCache(
-        #     cache_size=40,
-        #     num_workers=20) +
+        gp.PreCache(
+            cache_size=kwargs['cache_size'],
+            num_workers=kwargs['num_workers']) +
 
         # perform one training iteration for each passing batch (here we use
         # the tensor names earlier stored in train_net.config)
         gp.tensorflow.Train(
-            'train_net',
+            os.path.join(kwargs['output_folder'], kwargs['name']),
             net_names['optimizer'],
             net_names['loss'],
             inputs={
@@ -218,7 +222,7 @@ def train_until(name, **kwargs):
                 net_names['pred_fgbg']: pred_fgbg_gradients,
                 net_names['pred_cpv']: pred_cpv_gradients
             },
-            save_every=5000) +
+            save_every=kwargs['checkpoints']) +
 
         # save the passing batch as an HDF5 file for inspection
         gp.Snapshot(
@@ -238,12 +242,12 @@ def train_until(name, **kwargs):
             },
             output_dir='snapshots',
             output_filename='batch_{iteration}.hdf',
-            every=500,
+            every=kwargs['snapshots'],
             additional_request=snapshot_request,
             compression_type='gzip') +
 
         # show a summary of time spend in each node every 10 iterations
-        gp.PrintProfilingStats(every=100)
+        gp.PrintProfilingStats(every=kwargs['profiling'])
     )
 
     #########
@@ -271,7 +275,9 @@ def main():
             'gunpowder.nodes.random_location').setLevel(logging.DEBUG)
 
     kwargs = {'max_iteration': 10,
-              'output_folder': '.'
+              'output_folder': '.',
+              'name': "train_net",
+              'voxel_size': [1,1,1]
     }
     train_until("train_net", **kwargs)
 
