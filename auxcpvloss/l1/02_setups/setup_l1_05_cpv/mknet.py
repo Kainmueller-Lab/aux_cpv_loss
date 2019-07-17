@@ -100,6 +100,16 @@ def mk_net(**kwargs):
                 kwargs['loss_fgbg_coeff'] * loss_fgbg +
                 kwargs['loss_cpv_coeff']  * loss_cpv)
 
+    loss_aff_sum = tf.summary.scalar('loss_aff_sum',
+                                     kwargs['loss_affs_coeff'] * loss_affs)
+    loss_fgbg_sum = tf.summary.scalar('loss_fgbg_sum',
+                                     kwargs['loss_fgbg_coeff'] * loss_fgbg)
+    loss_cpv_sum = tf.summary.scalar('loss_cpv_sum',
+                                     kwargs['loss_cpv_coeff'] * loss_cpv)
+    loss_sum = tf.summary.scalar('loss_sum', loss)
+    summaries = tf.summary.merge([loss_aff_sum, loss_fgbg_sum,
+                                  loss_cpv_sum, loss_sum], name="summaries")
+
     learning_rate = tf.placeholder_with_default(kwargs['lr'], shape=(),
                                                 name="learning-rate")
     # use the Adam optimizer to minimize the loss
@@ -131,7 +141,8 @@ def mk_net(**kwargs):
         'gt_cpv': gt_cpv.name,
         'loss_weights_cpv': loss_weights_cpv.name,
         'loss': loss.name,
-        'optimizer': optimizer.name
+        'optimizer': optimizer.name,
+        'summaries': summaries.name
     }
 
     with open(fn + '_names.json', 'w') as f:

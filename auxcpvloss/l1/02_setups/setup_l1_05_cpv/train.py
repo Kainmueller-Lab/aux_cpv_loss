@@ -207,8 +207,10 @@ def train_until(**kwargs):
         # the tensor names earlier stored in train_net.config)
         gp.tensorflow.Train(
             os.path.join(kwargs['output_folder'], kwargs['name']),
-            net_names['optimizer'],
-            net_names['loss'],
+            optimizer=net_names['optimizer'],
+            summary=net_names['summaries'],
+            log_dir=kwargs['output_folder'],
+            loss=net_names['loss'],
             inputs={
                 net_names['raw']: raw,
                 net_names['gt_affs']: gt_affs,
