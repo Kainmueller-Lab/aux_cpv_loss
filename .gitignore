@@ -12,3 +12,6 @@ data
 experiments/
 log.txt
 flycheck*
+*.zarr
+*.csv
+*.hdf

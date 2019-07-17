@@ -8,6 +8,7 @@ import time
 import h5py
 import numpy as np
 import tensorflow as tf
+import zarr
 
 import gunpowder as gp
 
@@ -81,16 +82,18 @@ def train_until(**kwargs):
     snapshot_request.add(pred_cpv, output_shape_world)
     # snapshot_request.add(pred_cpv_gradients, output_shape_world)
 
-    ##############################
-    # ASSEMBLE TRAINING PIPELINE #
-    ##############################
 
+    if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
+        raise NotImplementedError("train node for %s not implemented yet", kwargs['input_format'])
 
     fls = []
     shapes = []
     for f in kwargs['data_files']:
         fls.append(os.path.splitext(f)[0])
-        vol = h5py.File(f, 'r')['volumes/raw']
+        if kwargs['input_format'] == "hdf":
+            vol = h5py.File(f, 'r')['volumes/raw']
+        elif kwargs['input_format'] == "zarr":
+            vol = zarr.open(f, 'r')['volumes/raw']
         print(f, vol.shape, vol.dtype)
         shapes.append(vol.shape)
         if vol.dtype != np.float32:
@@ -101,13 +104,18 @@ def train_until(**kwargs):
     # padR = 46
     # padGT = 32
 
+    if kwargs['input_format'] == "hdf":
+        sourceNode = gp.Hdf5Source
+    elif kwargs['input_format'] == "zarr":
+        sourceNode = gp.ZarrSource
+
     augmentation = kwargs['augmentation']
     pipeline = (
         tuple(
             # read batches from the HDF5 file
             (
-                gp.Hdf5Source(
-                    fls[t] + ".hdf",
+                sourceNode(
+                    fls[t] + "." + kwargs['input_format'],
                     datasets={
                         raw: 'volumes/raw',
                         gt_labels: 'volumes/gt_labels',

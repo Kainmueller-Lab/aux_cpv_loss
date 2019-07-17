@@ -159,12 +159,16 @@ def train(args, config, train_folder):
                           output_folder=train_folder,
                           data_files=data_files,
                           voxel_size=config['data']['voxel_size'],
+                          input_format=config['data']['input_format'],
                           **config['training'],
                           **config['preprocessing'])
         os._exit(0)
 
     else:
-        os.waitpid(child_pid, 0)
+        _, status = os.waitpid(child_pid, 0)
+        exitcode = os.WEXITSTATUS(status)
+        if not os.WIFEXITED(status) or exitcode != 0:
+            raise RuntimeError("training failed, check exception in child process")
 
 
 def get_list_train_files(config):

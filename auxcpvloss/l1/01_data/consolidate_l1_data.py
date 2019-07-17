@@ -8,6 +8,7 @@ import numpy as np
 import scipy.stats
 import skimage.io as io
 import tifffile
+import zarr
 
 
 def load_array(filename):
@@ -116,6 +117,8 @@ def get_arguments():
                         help='location of input files')
     parser.add_argument('-o', '--out-dir', dest='out_dir', required=True,
                         help='where to place output files')
+    parser.add_argument('--out-format', dest='out_format', default="hdf",
+                        help='format of output files')
     parser.add_argument('-p', '--parallel', default=1, type=int)
     parser.add_argument('--raw-min', dest='raw_min', type=int)
     parser.add_argument('--raw-max', dest='raw_max', type=int)
@@ -170,26 +173,35 @@ def work(args, sample):
 
     fgbg = (1 * (labels > 0)).astype(np.uint8)
 
-    with h5py.File(out_fn + '.hdf', 'w') as f:
-        f.create_dataset(
-            'volumes/raw',
-            data=raw,
-            compression='gzip')
-        f.create_dataset(
-            'volumes/gt_labels',
-            data=labels,
-            compression='gzip')
-        f.create_dataset(
-            'volumes/gt_fgbg',
-            data=fgbg,
-            compression='gzip')
+    if args.out_format == "hdf":
+        f = h5py.File(out_fn + '.hdf', 'w')
+    elif args.out_format == "zarr":
+        f = zarr.open(out_fn + '.zarr', 'w')
 
-        for dataset in ['volumes/raw',
-                        'volumes/gt_labels',
-                        'volumes/gt_fgbg']:
-            f[dataset].attrs['offset'] = (0, 0, 0)
-            f[dataset].attrs['resolution'] = (1, 1, 1)
+    f.create_dataset(
+        'volumes/raw',
+        data=raw,
+        chunks=(140, 140, 20),
+        compression='gzip')
+    f.create_dataset(
+        'volumes/gt_labels',
+        data=labels,
+        chunks=(1, 140, 140, 20),
+        compression='gzip')
+    f.create_dataset(
+        'volumes/gt_fgbg',
+        data=fgbg,
+        chunks=(1, 140, 140, 20),
+        compression='gzip')
 
+    for dataset in ['volumes/raw',
+                    'volumes/gt_labels',
+                    'volumes/gt_fgbg']:
+        f[dataset].attrs['offset'] = (0, 0, 0)
+        f[dataset].attrs['resolution'] = (1, 1, 1)
+
+    if args.out_format == "hdf":
+        f.close()
 
 if __name__ == "__main__":
     main()

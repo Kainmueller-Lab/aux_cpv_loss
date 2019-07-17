@@ -7,6 +7,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', dest="in_dir", required=True)
     parser.add_argument('-o', dest="out_dir", required=True)
+    parser.add_argument('-f', dest="out_format", default="hdf")
     args = parser.parse_args()
 
     trainD = os.path.join(args.out_dir, "train")
@@ -93,29 +94,41 @@ def main():
         "unc54L1_0123072",
     ]
 
+    fmt = "." + args.out_format
+    if args.out_format == "hdf":
+        copy_func = shutil.copy2
+    elif args.out_format == "zarr":
+        copy_func = shutil.copytree
+
     for fl in trainFls:
-        shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), trainD)
-        shutil.copy2(os.path.join(args.in_dir, fl+".csv"), trainD)
+        copy_func(os.path.join(args.in_dir, fl + fmt),
+                  os.path.join(args.in_dir, trainD, fl + fmt))
+        shutil.copy2(os.path.join(args.in_dir, fl + ".csv"), trainD)
 
     for fl in trainFold1Fls:
-        shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), trainD_f1)
-        shutil.copy2(os.path.join(args.in_dir, fl+".csv"), trainD_f1)
+        copy_func(os.path.join(args.in_dir, fl + fmt),
+                  os.path.join(args.in_dir, trainD_f1, fl + fmt))
+        shutil.copy2(os.path.join(args.in_dir, fl + ".csv"), trainD_f1)
 
     for fl in trainFold2Fls:
-        shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), trainD_f2)
-        shutil.copy2(os.path.join(args.in_dir, fl+".csv"), trainD_f2)
+        copy_func(os.path.join(args.in_dir, fl + fmt),
+                  os.path.join(args.in_dir, trainD_f2, fl + fmt))
+        shutil.copy2(os.path.join(args.in_dir, fl + ".csv"), trainD_f2)
 
     for fl in trainFold3Fls:
-        shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), trainD_f3)
-        shutil.copy2(os.path.join(args.in_dir, fl+".csv"), trainD_f3)
+        copy_func(os.path.join(args.in_dir, fl + fmt),
+                  os.path.join(args.in_dir, trainD_f3, fl + fmt))
+        shutil.copy2(os.path.join(args.in_dir, fl + ".csv"), trainD_f3)
 
     for fl in testFls:
-        shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), testD)
-        shutil.copy2(os.path.join(args.in_dir, fl+".csv"), testD)
+        copy_func(os.path.join(args.in_dir, fl + fmt),
+                  os.path.join(args.in_dir, testD, fl + fmt))
+        shutil.copy2(os.path.join(args.in_dir, fl + ".csv"), testD)
 
     for fl in valFls:
-        shutil.copy2(os.path.join(args.in_dir, fl+".hdf"), valD)
-        shutil.copy2(os.path.join(args.in_dir, fl+".csv"), valD)
+        copy_func(os.path.join(args.in_dir, fl + fmt),
+                  os.path.join(args.in_dir, valD, fl + fmt))
+        shutil.copy2(os.path.join(args.in_dir, fl + ".csv"), valD)
 
 if __name__ == "__main__":
     main()
