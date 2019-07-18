@@ -476,6 +476,9 @@ def main():
 
     # update config with command line values
     update_config(args, config)
+    if os.path.exists(os.path.join(base, "config.toml")):
+        os.replace(os.path.join(base, "config.toml"),
+                   os.path.join(base, "config.toml_backup"))
     with open(os.path.join(base, "config.toml"), 'w') as f:
         toml.dump(config, f)
 
