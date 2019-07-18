@@ -3,9 +3,10 @@ from datetime import datetime
 from glob import glob
 import fnmatch
 import functools
+import importlib
 import logging
 import os
-import importlib
+import sys
 
 import h5py
 from joblib import Parallel, delayed
@@ -428,8 +429,6 @@ def visualize():
 
 
 def main():
-    # todo:
-
     if "CUDA_VISIBLE_DEVICES" not in os.environ:
         selectedGPU = util.selectGPU()
         if selectedGPU is None:
@@ -455,9 +454,6 @@ def main():
     except:
         raise IOError('Could not read config file! Please check!')
 
-    # set logging level
-    logging.basicConfig(level=config['general']['logging'])
-
     # get experiment name
     if args.setup is not None:
         if args.expid is not None:
@@ -467,6 +463,16 @@ def main():
 
     # create folder structure for experiment
     base, train_folder, val_folder, test_folder = create_folders(args, expname)
+
+    # set logging level
+    logging.basicConfig(
+        level=config['general']['logging'],
+        handlers=[
+            logging.FileHandler("{}/train.log".format(train_folder)),
+            logging.StreamHandler(sys.stdout)
+        ])
+    logger.info('attention: using config file %s', args.config)
+
 
     # update config with command line values
     update_config(args, config)

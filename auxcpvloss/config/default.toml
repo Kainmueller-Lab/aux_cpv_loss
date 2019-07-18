@@ -3,16 +3,16 @@
 # warning 30
 # info    20
 # debug   10
-logging = 10
-debug = true
+logging = 20
+debug = false
 overwrite = false
 
 [data]
 # use absolute paths
-train_data = '/home/peter/data/datasets/data_L1/data_L1_140/train'
-val_data = '/home/peter/data/datasets/data_L1/data_L1_140/train'
-test_data = '/home/peter/data/datasets/data_L1/data_L1_140/test'
-input_format = 'hdf'
+train_data = '/home/peter/data/datasets/data_L1/data_L1_140_zarr/train'
+val_data = '/home/peter/data/datasets/data_L1/data_L1_140_zarr/train'
+test_data = '/home/peter/data/datasets/data_L1/data_L1_140_zarr/test'
+input_format = 'zarr'
 gt_key = 'volumes/gt_labels'
 voxel_size = [1,1,1]
 
@@ -44,11 +44,11 @@ batch_size = 1
 num_gpus = 1
 num_workers = 10
 cache_size = 40
-max_iterations = 20
-checkpoints = 10
-snapshots = 5
-profiling = 5
-folds = '12'
+max_iterations = 200000
+checkpoints = 10000
+snapshots = 500
+profiling = 500
+folds = '13'
 
 [training.augmentation.elastic]
 control_point_spacing = [10,10,10]
