@@ -250,7 +250,7 @@ def train_until(**kwargs):
                 pred_cpv: '/volumes/pred_cpv',
                 pred_cpv_gradients: '/volumes/pred_cpv_gradients'
             },
-            output_dir='snapshots',
+            output_dir=os.path.join(kwargs['output_folder'], 'snapshots'),
             output_filename='batch_{iteration}.hdf',
             every=kwargs['snapshots'],
             additional_request=snapshot_request,
