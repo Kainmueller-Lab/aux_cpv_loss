@@ -5,6 +5,12 @@ import fnmatch
 import functools
 import importlib
 import logging
+try:
+    import absl.logging
+    logging.root.removeHandler(absl.logging._absl_handler)
+    absl.logging._warn_preinit_stderr = False
+except Exception as e:
+    print(e)
 import os
 import sys
 
