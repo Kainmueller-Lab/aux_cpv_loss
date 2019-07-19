@@ -5,6 +5,7 @@ import os
 import h5py
 from joblib import Parallel, delayed
 import numpy as np
+import scipy.ndimage
 import scipy.stats
 import skimage.io as io
 import tifffile
@@ -26,7 +27,8 @@ def load_array(filename):
     return image
 
 
-def get_and_write_points(filename, out_fn, padding=0):
+def get_and_write_points(filename, out_fn, shape, padding=0):
+    gt_centers = np.zeros(shape, dtype=np.float32)
     with open(filename, 'r') as in_fl:
         out_fl = open(out_fn, 'w')
         # one line per instance, extract center points
@@ -36,8 +38,9 @@ def get_and_write_points(filename, out_fn, padding=0):
             x = float(arr[2])+padding
             y = float(arr[3])+padding
             z = float(arr[4])+padding
+            gt_centers[int(z), int(y), int(x)] = 1.0
             out_fl.write("{}, {}, {}, {}\n".format(z, y, x, idx))
-
+    return gt_centers
 
 # https://github.com/CSBDeep/CSBDeep/blob/master/csbdeep/utils/utils.py
 def normalize_percentile(x, pmin=3, pmax=99.8, axis=None, clip=False,
@@ -122,6 +125,8 @@ def get_arguments():
     parser.add_argument('-p', '--parallel', default=1, type=int)
     parser.add_argument('--raw-min', dest='raw_min', type=int)
     parser.add_argument('--raw-max', dest='raw_max', type=int)
+    parser.add_argument('--scale-sdt', dest='scale_sdt', type=float, default=-9)
+    parser.add_argument('--sigma', type=float, default=2)
     parser.add_argument('--normalize', default='minmax',
                         choices=['minmax', 'percentile', 'meanstd'])
     parser.add_argument('--preprocess', default='no',
@@ -161,17 +166,91 @@ def work(args, sample):
 
     labels_fn = os.path.join(args.in_dir, "groundTruthInstanceSeg",
                              sample + ".ano.curated.tiff")
-    labels = load_array(labels_fn).astype(np.uint16)
-    labels = pad(args, labels, 'constant')
-    if labels.shape[0] != 1:
-        labels = np.expand_dims(labels, 0)
+    gt_labels = load_array(labels_fn).astype(np.uint16)
+    gt_labels = pad(args, gt_labels, 'constant')
+
+    gt_labels_tmp = np.zeros((gt_labels.shape[0]+1,
+                              gt_labels.shape[1]+1,
+                              gt_labels.shape[2]+1), dtype=np.uint16)
+    gt_labels_tmp[1:,1:,1:] = gt_labels
+    gt_affs = np.zeros((3,) + gt_labels.shape, dtype=np.uint16)
+    gt_affs[0,...] = gt_labels==gt_labels_tmp[0:-1,1:,1:]
+    gt_affs[0,...][gt_labels == 0] = 0
+    gt_affs[1,...] = gt_labels==gt_labels_tmp[1:,0:-1,1:]
+    gt_affs[1,...][gt_labels == 0] = 0
+    gt_affs[2,...] = gt_labels==gt_labels_tmp[1:,1:,0:-1]
+    gt_affs[2,...][gt_labels == 0] = 0
+
+    gt_twoclass = np.zeros(gt_labels.shape, dtype=np.uint16)
+    gt_twoclass[gt_labels > 0] = 1
+
+    gt_threeclass = np.zeros(gt_labels.shape, dtype=np.uint16)
+    struct = scipy.ndimage.generate_binary_structure(3, 3)
+    for label in np.unique(gt_labels):
+        if label == 0:
+            continue
+
+        label_mask = gt_labels==label
+        eroded_label_mask = scipy.ndimage.binary_erosion(label_mask,
+                                                         iterations=1,
+                                                         structure=struct,
+                                                         border_value=1)
+        boundary = np.logical_xor(label_mask, eroded_label_mask)
+        gt_threeclass[boundary] = 2
+        gt_threeclass[eroded_label_mask] = 1
+
+    gt_boundary = np.copy(gt_threeclass)
+    gt_boundary[gt_threeclass != 2] = 1
+    gt_boundary[gt_threeclass == 2] = 0
+
+    gt_edt = scipy.ndimage.distance_transform_edt(gt_boundary)
+    gt_sdt = np.copy(gt_edt)
+    for label in np.unique(gt_labels):
+        if label == 0:
+            continue
+
+        label_mask = gt_labels==label
+        gt_sdt[label_mask] *= -1
+    gt_tanh =  np.tanh(1./abs(args.scale_sdt) * gt_sdt)
+
 
 
     cp_fn = os.path.join(args.in_dir, "groundTruthInstanceSeg",
                          sample + ".ano.curated.txt")
-    get_and_write_points(cp_fn, out_fn + ".csv", padding=args.padding)
+    gt_centers = get_and_write_points(cp_fn, out_fn + ".csv", gt_labels.shape,
+                                      padding=args.padding)
+    gt_gaussian = scipy.ndimage.filters.gaussian_filter(gt_centers, args.sigma,
+                                                        mode='constant')
+    max_value = np.max(gt_gaussian)
+    if max_value > 0:
+        gt_gaussian /= max_value
+    gt_gaussian = gt_gaussian.astype(np.float32)
 
-    fgbg = (1 * (labels > 0)).astype(np.uint8)
+    # tmp = np.zeros((3,) + gt_labels.shape, dtype=np.float32)
+    # tmp[0,...] = gt_gaussian
+    # tmp[1,...] = gt_gaussian
+    # tmp[2,...] = gt_gaussian
+    # tmp[0,...][gt_centers > 0.5] = 1.0
+    # tmp[1,...][gt_centers > 0.5] = 0.0
+    # tmp[2,...][gt_centers > 0.5] = 0.0
+    # tmp *= 255
+    # tmp = tmp.astype(np.uint8)
+    # with h5py.File(out_fn + "_tmp.hdf", 'w') as f:
+    #     f.create_dataset(
+    #         'volumes/tmp',
+    #         data=tmp,
+    #         chunks=(3, 140, 140, 20),
+    #         compression='gzip')
+
+    if gt_labels.shape[0] != 1:
+        gt_labels = np.expand_dims(gt_labels, 0)
+        gt_tanh = np.expand_dims(gt_tanh, 0)
+        gt_threeclass = np.expand_dims(gt_threeclass, 0)
+        gt_twoclass = np.expand_dims(gt_twoclass, 0)
+        gt_centers = np.expand_dims(gt_centers, 0)
+        gt_gaussian = np.expand_dims(gt_gaussian, 0)
+
+    gt_fgbg = (1 * (gt_labels > 0)).astype(np.uint8)
 
     if args.out_format == "hdf":
         f = h5py.File(out_fn + '.hdf', 'w')
@@ -185,17 +264,53 @@ def work(args, sample):
         compression='gzip')
     f.create_dataset(
         'volumes/gt_labels',
-        data=labels,
+        data=gt_labels,
         chunks=(1, 140, 140, 20),
         compression='gzip')
     f.create_dataset(
         'volumes/gt_fgbg',
-        data=fgbg,
+        data=gt_fgbg,
+        chunks=(1, 140, 140, 20),
+        compression='gzip')
+    f.create_dataset(
+        'volumes/gt_tanh',
+        data = gt_tanh,
+        chunks=(1, 140, 140, 20),
+        compression='gzip')
+    f.create_dataset(
+        'volumes/gt_twoclass',
+        data = gt_twoclass,
+        chunks=(1, 140, 140, 20),
+        compression='gzip')
+    f.create_dataset(
+        'volumes/gt_threeclass',
+        data = gt_threeclass,
+        chunks=(1, 140, 140, 20),
+        compression='gzip')
+    f.create_dataset(
+        'volumes/gt_affs',
+        data = gt_affs,
+        chunks=(3, 140, 140, 20),
+        compression='gzip')
+    f.create_dataset(
+        'volumes/gt_centers',
+        data = gt_centers,
+        chunks=(1, 140, 140, 20),
+        compression='gzip')
+    f.create_dataset(
+        'volumes/gt_gaussian',
+        data = gt_gaussian,
         chunks=(1, 140, 140, 20),
         compression='gzip')
 
     for dataset in ['volumes/raw',
                     'volumes/gt_labels',
+                    'volumes/gt_tanh',
+                    'volumes/gt_twoclass',
+                    'volumes/gt_threeclass',
+                    'volumes/gt_affs',
+                    'volumes/gt_centers',
+                    'volumes/gt_gaussian',
                     'volumes/gt_fgbg']:
         f[dataset].attrs['offset'] = (0, 0, 0)
         f[dataset].attrs['resolution'] = (1, 1, 1)
