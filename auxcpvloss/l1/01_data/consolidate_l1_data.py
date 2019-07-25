@@ -173,7 +173,7 @@ def work(args, sample):
                               gt_labels.shape[1]+1,
                               gt_labels.shape[2]+1), dtype=np.uint16)
     gt_labels_tmp[1:,1:,1:] = gt_labels
-    gt_affs = np.zeros((3,) + gt_labels.shape, dtype=np.uint16)
+    gt_affs = np.zeros((3,) + gt_labels.shape, dtype=np.uint8)
     gt_affs[0,...] = gt_labels==gt_labels_tmp[0:-1,1:,1:]
     gt_affs[0,...][gt_labels == 0] = 0
     gt_affs[1,...] = gt_labels==gt_labels_tmp[1:,0:-1,1:]
@@ -181,10 +181,10 @@ def work(args, sample):
     gt_affs[2,...] = gt_labels==gt_labels_tmp[1:,1:,0:-1]
     gt_affs[2,...][gt_labels == 0] = 0
 
-    gt_twoclass = np.zeros(gt_labels.shape, dtype=np.uint16)
-    gt_twoclass[gt_labels > 0] = 1
+    gt_fgbg = np.zeros(gt_labels.shape, dtype=np.uint8)
+    gt_fgbg[gt_labels > 0] = 1
 
-    gt_threeclass = np.zeros(gt_labels.shape, dtype=np.uint16)
+    gt_threeclass = np.zeros(gt_labels.shape, dtype=np.uint8)
     struct = scipy.ndimage.generate_binary_structure(3, 3)
     for label in np.unique(gt_labels):
         if label == 0:
@@ -246,11 +246,9 @@ def work(args, sample):
         gt_labels = np.expand_dims(gt_labels, 0)
         gt_tanh = np.expand_dims(gt_tanh, 0)
         gt_threeclass = np.expand_dims(gt_threeclass, 0)
-        gt_twoclass = np.expand_dims(gt_twoclass, 0)
+        gt_fgbg = np.expand_dims(gt_fgbg, 0)
         gt_centers = np.expand_dims(gt_centers, 0)
         gt_gaussian = np.expand_dims(gt_gaussian, 0)
-
-    gt_fgbg = (1 * (gt_labels > 0)).astype(np.uint8)
 
     if args.out_format == "hdf":
         f = h5py.File(out_fn + '.hdf', 'w')
@@ -278,11 +276,6 @@ def work(args, sample):
         chunks=(1, 140, 140, 20),
         compression='gzip')
     f.create_dataset(
-        'volumes/gt_twoclass',
-        data = gt_twoclass,
-        chunks=(1, 140, 140, 20),
-        compression='gzip')
-    f.create_dataset(
         'volumes/gt_threeclass',
         data = gt_threeclass,
         chunks=(1, 140, 140, 20),
@@ -306,7 +299,6 @@ def work(args, sample):
     for dataset in ['volumes/raw',
                     'volumes/gt_labels',
                     'volumes/gt_tanh',
-                    'volumes/gt_twoclass',
                     'volumes/gt_threeclass',
                     'volumes/gt_affs',
                     'volumes/gt_centers',

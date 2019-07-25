@@ -9,9 +9,9 @@ overwrite = false
 
 [data]
 # use absolute paths
-train_data = '/home/peter/data/datasets/data_L1/data_L1_140_zarr/train'
-val_data = '/home/peter/data/datasets/data_L1/data_L1_140_zarr/train'
-test_data = '/home/peter/data/datasets/data_L1/data_L1_140_zarr/test'
+train_data = '/home/peter/data/datasets/data_L1/data_L1_140_all/train'
+val_data = '/home/peter/data/datasets/data_L1/data_L1_140_all/train'
+test_data = '/home/peter/data/datasets/data_L1/data_L1_140_all/test'
 input_format = 'zarr'
 gt_key = 'volumes/gt_labels'
 voxel_size = [1,1,1]
@@ -21,9 +21,9 @@ train_net_name = 'train_net'
 test_net_name = 'test_net'
 train_input_shape = [230,230,200]
 test_input_shape = [230,230,200]
-num_fmaps = 12
-fmap_inc_factors = [2,2,2]
-fmap_dec_factors = [2,2,2]
+num_fmaps = 14
+fmap_inc_factors = [4,4,4]
+fmap_dec_factors = [4,4,4]
 downsample_factors = [[2,2,2],[2,2,2],[2,2,2]]
 activation = 'relu'
 padding = 'valid'
@@ -83,8 +83,8 @@ num_workers = 8
 [postprocessing.watershed]
 num_dilations = 1
 fg_thresh = 0.95
-aff_thresh = 0.98
-aff_key = "volumes/pred_affs"
+seed_thresh = 0.98
+surf_key = "volumes/pred_affs"
 fgbg_key = "volumes/pred_fgbg"
 raw_key = "volumes/raw_cropped"
 output_format = 'hdf'

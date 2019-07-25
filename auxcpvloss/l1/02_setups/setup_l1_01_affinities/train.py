@@ -30,20 +30,15 @@ def train_until(**kwargs):
     gt_labels = gp.ArrayKey('GT_LABELS')
     gt_affs = gp.ArrayKey('GT_AFFS')
     gt_fgbg = gp.ArrayKey('GT_FGBG')
-    gt_cpv = gp.ArrayKey('GT_CPV')
-    gt_points = gp.PointsKey('GT_CPV_POINTS')
 
     loss_weights_affs = gp.ArrayKey('LOSS_WEIGHTS_AFFS')
     loss_weights_fgbg = gp.ArrayKey('LOSS_WEIGHTS_FGBG')
-    # loss_weights_cpv = gp.ArrayKey('LOSS_WEIGHTS_CPV')
 
     pred_affs = gp.ArrayKey('PRED_AFFS')
     pred_fgbg = gp.ArrayKey('PRED_FGBG')
-    pred_cpv = gp.ArrayKey('PRED_CPV')
 
     pred_affs_gradients = gp.ArrayKey('PRED_AFFS_GRADIENTS')
     pred_fgbg_gradients = gp.ArrayKey('PRED_FGBG_GRADIENTS')
-    pred_cpv_gradients = gp.ArrayKey('PRED_CPV_GRADIENTS')
 
 
     with open(os.path.join(kwargs['output_folder'],
@@ -64,7 +59,6 @@ def train_until(**kwargs):
     request.add(gt_labels, output_shape_world)
     request.add(gt_fgbg, output_shape_world)
     request.add(anchor, output_shape_world)
-    request.add(gt_cpv, output_shape_world)
     request.add(gt_affs, output_shape_world)
     request.add(loss_weights_affs, output_shape_world)
     request.add(loss_weights_fgbg, output_shape_world)
@@ -79,8 +73,6 @@ def train_until(**kwargs):
     snapshot_request.add(gt_fgbg, output_shape_world)
     snapshot_request.add(pred_fgbg, output_shape_world)
     # snapshot_request.add(pred_fgbg_gradients, output_shape_world)
-    snapshot_request.add(pred_cpv, output_shape_world)
-    # snapshot_request.add(pred_cpv_gradients, output_shape_world)
 
 
     if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
@@ -113,34 +105,22 @@ def train_until(**kwargs):
     augmentation = kwargs['augmentation']
     pipeline = (
         tuple(
-            # read batches from the HDF5 file
-            (
-                sourceNode(
-                    fls[t] + "." + kwargs['input_format'],
-                    datasets={
-                        raw: 'volumes/raw',
-                        gt_labels: 'volumes/gt_labels',
-                        gt_fgbg: 'volumes/gt_fgbg',
-                        anchor: 'volumes/gt_fgbg',
-                    },
-                    array_specs={
-                        raw: gp.ArraySpec(interpolatable=True),
-                        gt_labels: gp.ArraySpec(interpolatable=False),
-                        gt_fgbg: gp.ArraySpec(interpolatable=False),
-                        anchor: gp.ArraySpec(interpolatable=False)
-                    }
-                ),
-                gp.CsvIDPointsSource(
-                    fls[t] + ".csv",
-                    gt_points,
-                    points_spec=gp.PointsSpec(roi=gp.Roi(
-                        gp.Coordinate((0, 0, 0)),
-                        gp.Coordinate(shapes[t])))
-                )
+            sourceNode(
+                fls[t] + "." + kwargs['input_format'],
+                datasets={
+                    raw: 'volumes/raw',
+                    gt_labels: 'volumes/gt_labels',
+                    gt_fgbg: 'volumes/gt_fgbg',
+                    anchor: 'volumes/gt_fgbg',
+                },
+                array_specs={
+                    raw: gp.ArraySpec(interpolatable=True),
+                    gt_labels: gp.ArraySpec(interpolatable=False),
+                    gt_fgbg: gp.ArraySpec(interpolatable=False),
+                    anchor: gp.ArraySpec(interpolatable=False)
+                }
             )
-            + gp.MergeProvider()
             + gp.Pad(raw, None)
-            + gp.Pad(gt_points, None)
             + gp.Pad(gt_labels, None)
             + gp.Pad(gt_fgbg, None)
 
@@ -185,10 +165,6 @@ def train_until(**kwargs):
             gt_labels,
             gt_affs) +
 
-        gp.AddCPV(
-            gt_points,
-            gt_labels,
-            gt_cpv) +
         # create a weight array that balances positive and negative samples in
         # the affinity array
         gp.BalanceLabels(
@@ -217,7 +193,6 @@ def train_until(**kwargs):
                 net_names['gt_affs']: gt_affs,
                 net_names['gt_fgbg']: gt_fgbg,
                 net_names['anchor']: anchor,
-                net_names['gt_cpv']: gt_cpv,
                 net_names['gt_labels']: gt_labels,
                 net_names['loss_weights_affs']: loss_weights_affs,
                 net_names['loss_weights_fgbg']: loss_weights_fgbg
@@ -225,13 +200,11 @@ def train_until(**kwargs):
             outputs={
                 net_names['pred_affs']: pred_affs,
                 net_names['pred_fgbg']: pred_fgbg,
-                net_names['pred_cpv']: pred_cpv,
                 net_names['raw_cropped']: raw_cropped,
             },
             gradients={
                 net_names['pred_affs']: pred_affs_gradients,
                 net_names['pred_fgbg']: pred_fgbg_gradients,
-                net_names['pred_cpv']: pred_cpv_gradients
             },
             save_every=kwargs['checkpoints']) +
 
@@ -243,13 +216,10 @@ def train_until(**kwargs):
                 gt_labels: '/volumes/gt_labels',
                 gt_affs: '/volumes/gt_affs',
                 gt_fgbg: '/volumes/gt_fgbg',
-                gt_cpv: '/volumes/gt_cpv',
                 pred_affs: '/volumes/pred_affs',
                 pred_affs_gradients: '/volumes/pred_affs_gradients',
                 pred_fgbg: '/volumes/pred_fgbg',
                 pred_fgbg_gradients: '/volumes/pred_fgbg_gradients',
-                pred_cpv: '/volumes/pred_cpv',
-                pred_cpv_gradients: '/volumes/pred_cpv_gradients'
             },
             output_dir=os.path.join(kwargs['output_folder'], 'snapshots'),
             output_filename='batch_{iteration}.hdf',

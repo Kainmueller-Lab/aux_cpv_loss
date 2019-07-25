@@ -7,6 +7,7 @@ import h5py
 import mahotas
 import numpy as np
 import scipy.ndimage
+import scipy.special
 
 import zarr
 
@@ -53,7 +54,7 @@ def label(**kwargs):
     else:
         raise NotImplementedError("invalid pred format")
     surf = np.array(input_file[kwargs['surf_key']])
-    fgbg = np.array(input_file[kwargs['fgbg_key']])
+    fgbg = 1.0 - np.array(input_file[kwargs['fgbg_key']])
     raw = np.array(input_file[kwargs['raw_key']])
 
     if kwargs['pred_format'] == "hdf":
@@ -75,11 +76,8 @@ def label(**kwargs):
     if np.count_nonzero(fg) == 0:
         raise RuntimeError("{}: no foreground found".format(kwargs['sample']))
 
-    if surf.shape[0] > 1 and len(surf.shape) == 4:
-        # combine surface components
-        surf_scalar = 1.0 - 0.33 * (surf[0] + surf[1] + surf[2])
-    else:
-        surf_scalar = 1.0 - surf
+    surf = scipy.special.softmax(surf, axis=0)
+    surf_scalar = 1.0 - surf[1, ...]
     output_file.create_dataset('volumes/surf', data=surf_scalar,
                                compression='gzip')
 
@@ -99,10 +97,7 @@ def label(**kwargs):
                      kwargs['sample'], gt_labels.min(), gt_labels.max())
 
     # compute markers for watershed (seeds)
-    seeds = (1 * (surf > kwargs['seed_thresh'])).astype(np.uint8)
-    if surf.shape[0] > 1 and len(surf.shape) == 4:
-        seeds = (seeds[0] + seeds[1] + seeds[2])
-        seeds = (seeds > 2).astype(np.uint8)
+    seeds = (1 * (surf[1, ...] > kwargs['seed_thresh'])).astype(np.uint8)
     logger.debug("%s: seeds min/max %f %f",
                  kwargs['sample'], np.min(seeds), np.max(seeds))
 

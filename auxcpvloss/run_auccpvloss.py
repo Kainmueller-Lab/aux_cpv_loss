@@ -89,6 +89,10 @@ def get_arguments():
     parser.add_argument('--test-data', dest='test_data', default=None,
                         help='Test dataset to use.')
 
+    parser.add_argument("--debug_args", action="store_true",
+                        help=('Set some low values to certain'
+                              ' args for debugging.'))
+
     args = parser.parse_args()
 
     return args
@@ -133,6 +137,16 @@ def update_config(args, config):
         config['data']['input_format'] = args.input_format
     if 'input_format' not in config['data']:
         raise ValueError("Please provide data/input_format in cl or config")
+
+    print(config)
+
+def setDebugValuesForConfig(config):
+    config['training']['max_iterations'] = 10
+    config['training']['checkpoints'] = 10
+    config['training']['snapshots'] = 10
+    config['training']['profiling'] = 10
+    # config['training']['num_workers'] = 1
+    # config['training']['cache_size'] = 0
 
     print(config)
 
@@ -493,6 +507,8 @@ def main():
                    os.path.join(base, "config.toml_backup"))
     with open(os.path.join(base, "config.toml"), 'w') as f:
         toml.dump(config, f)
+    if args.debug_args:
+        setDebugValuesForConfig(config)
 
     # create network
     if 'all' in args.do or 'mknet' in args.do:

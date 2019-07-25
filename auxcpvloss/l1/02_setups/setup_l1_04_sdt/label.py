@@ -71,15 +71,13 @@ def label(**kwargs):
                                compression='gzip')
 
     # threshold bg/fg
-    fg = 1.0 * (fgbg > kwargs['fg_thresh'])
+    if kwargs['fg_thresh'] > 0:
+        logger.warning("fg threshold should be zero/negative")
+    fg = 1.0 * (fgbg < kwargs['fg_thresh'])
     if np.count_nonzero(fg) == 0:
         raise RuntimeError("{}: no foreground found".format(kwargs['sample']))
 
-    if surf.shape[0] > 1 and len(surf.shape) == 4:
-        # combine surface components
-        surf_scalar = 1.0 - 0.33 * (surf[0] + surf[1] + surf[2])
-    else:
-        surf_scalar = 1.0 - surf
+    surf_scalar = surf
     output_file.create_dataset('volumes/surf', data=surf_scalar,
                                compression='gzip')
 
@@ -99,10 +97,9 @@ def label(**kwargs):
                      kwargs['sample'], gt_labels.min(), gt_labels.max())
 
     # compute markers for watershed (seeds)
-    seeds = (1 * (surf > kwargs['seed_thresh'])).astype(np.uint8)
-    if surf.shape[0] > 1 and len(surf.shape) == 4:
-        seeds = (seeds[0] + seeds[1] + seeds[2])
-        seeds = (seeds > 2).astype(np.uint8)
+    if kwargs['seed_thresh'] > 0:
+        logger.warning("surface/seed threshold should be negative")
+    seeds = (1 * (surf < kwargs['seed_thresh'])).astype(np.uint8)
     logger.debug("%s: seeds min/max %f %f",
                  kwargs['sample'], np.min(seeds), np.max(seeds))
 
