@@ -42,7 +42,7 @@ lr = 0.0001
 [training]
 batch_size = 1
 num_gpus = 1
-num_workers = 10
+num_workers = 25
 cache_size = 40
 max_iterations = 200000
 checkpoints = 10000

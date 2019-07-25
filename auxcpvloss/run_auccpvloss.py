@@ -249,6 +249,7 @@ def predict_sample(args, config, name, data, sample, checkpoint, input_folder,
                     data_folder=data, input_folder=input_folder,
                     output_folder=output_folder,
                     voxel_size=config['data']['voxel_size'],
+                    input_format=config['data']['input_format'],
                     **config['preprocessing'],
                     **config['model'],
                     **config['prediction'])

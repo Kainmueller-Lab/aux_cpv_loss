@@ -38,23 +38,33 @@ def predict(**kwargs):
     request.add(pred_fgbg, output_shape_world)
     request.add(pred_cpv, output_shape_world)
 
-    source = gp.Hdf5Source(
-        os.path.join(kwargs['data_folder'], kwargs['sample'] + ".hdf"),
+    if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
+        raise NotImplementedError("predict node for %s not implemented yet",
+                                  kwargs['input_format'])
+    if kwargs['input_format'] == "hdf":
+        sourceNode = gp.Hdf5Source
+        with h5py.File(os.path.join(kwargs['data_folder'],
+                                    kwargs['sample'] + ".hdf"), 'r') as f:
+            shape = f['volumes/raw'].shape
+    elif kwargs['input_format'] == "zarr":
+        sourceNode = gp.ZarrSource
+        f = zarr.open(os.path.join(kwargs['data_folder'],
+                                   kwargs['sample'] + ".zarr"), 'r')
+        shape = f['volumes/raw'].shape
+    source = sourceNode(
+        os.path.join(kwargs['data_folder'],
+                     kwargs['sample'] + "." + kwargs['input_format']),
         datasets = {
             raw: 'volumes/raw'
         })
 
     if kwargs['output_format'] != "zarr":
         raise NotImplementedError("Please use zarr as prediction output")
-
     # pre-create zarr file
     zf = zarr.open(os.path.join(kwargs['output_folder'],
                                 kwargs['sample'] + '.zarr'), mode='w')
 
     # create pred affs dataset
-    with h5py.File(os.path.join(kwargs['data_folder'],
-                                kwargs['sample'] + ".hdf"), 'r') as f:
-        shape = f['volumes/raw'].shape
     zf.create('volumes/pred_affs',
               shape=[3] + list(shape),
               chunks=[3] + list(shape),
