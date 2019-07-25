@@ -42,7 +42,7 @@ def get_loss_weighted(gt, pred, loss_weights, loss, name, do_sigmoid):
         pred = tf.sigmoid(pred)
 
     return loss_weighted, pred, \
-        get_loss_print(loss_weighted, loss_weights, name)
+        get_loss_print(loss_weighted, name, loss_weights)
 
 
 def get_loss_print(loss, name, loss_weights=None):
