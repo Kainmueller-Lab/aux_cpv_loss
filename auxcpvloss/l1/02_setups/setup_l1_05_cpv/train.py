@@ -84,8 +84,8 @@ def train_until(**kwargs):
 
 
     if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
-        raise NotImplementedError("train node for %s not implemented yet",
-                                  kwargs['input_format'])
+        raise NotImplementedError("train node for {} not implemented".format(
+            kwargs['input_format']))
 
     fls = []
     shapes = []

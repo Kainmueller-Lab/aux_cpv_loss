@@ -14,8 +14,8 @@ def predict(**kwargs):
 
     raw = gp.ArrayKey('RAW')
     raw_cropped = gp.ArrayKey('RAW_CROPPED')
-    pred_threeclass = gp.ArrayKey('PRED_THREECLASS')
-    pred_class_max = gp.ArrayKey('PRED_CLASS_MAX')
+    pred_labels = gp.ArrayKey('PRED_LABELS')
+    pred_label_max = gp.ArrayKey('PRED_LABEL_MAX')
     pred_fgbg = gp.ArrayKey('PRED_FGBG')
 
     with open(os.path.join(kwargs['input_folder'],
@@ -34,8 +34,8 @@ def predict(**kwargs):
     request = gp.BatchRequest()
     request.add(raw, input_shape_world)
     request.add(raw_cropped, output_shape_world)
-    request.add(pred_threeclass, output_shape_world)
-    request.add(pred_class_max, output_shape_world)
+    request.add(pred_labels, output_shape_world)
+    request.add(pred_label_max, output_shape_world)
     request.add(pred_fgbg, output_shape_world)
 
     if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
@@ -64,19 +64,19 @@ def predict(**kwargs):
     zf = zarr.open(os.path.join(kwargs['output_folder'],
                                 kwargs['sample'] + '.zarr'), mode='w')
 
-    zf.create('volumes/pred_threeclass',
+    zf.create('volumes/pred_labels',
               shape=[3] + list(shape),
               chunks=[3] + list(shape),
               dtype=np.float32)
-    zf['volumes/pred_threeclass'].attrs['offset'] = [0, 0, 0]
-    zf['volumes/pred_threeclass'].attrs['resolution'] = kwargs['voxel_size']
+    zf['volumes/pred_labels'].attrs['offset'] = [0, 0, 0]
+    zf['volumes/pred_labels'].attrs['resolution'] = kwargs['voxel_size']
 
-    zf.create('volumes/pred_class_max',
+    zf.create('volumes/pred_label_max',
               shape=[1] + list(shape),
               chunks=[1] + list(shape),
               dtype=np.float32)
-    zf['volumes/pred_class_max'].attrs['offset'] = [0, 0, 0]
-    zf['volumes/pred_class_max'].attrs['resolution'] = kwargs['voxel_size']
+    zf['volumes/pred_label_max'].attrs['offset'] = [0, 0, 0]
+    zf['volumes/pred_label_max'].attrs['resolution'] = kwargs['voxel_size']
 
     zf.create('volumes/pred_fgbg',
               shape=[1] + list(shape),
@@ -108,8 +108,8 @@ def predict(**kwargs):
                 net_names['raw']: raw
             },
             outputs={
-                net_names['pred_threeclass']: pred_threeclass,
-                net_names['pred_class_max']: pred_class_max,
+                net_names['pred_labels']: pred_labels,
+                net_names['pred_label_max']: pred_label_max,
                 net_names['pred_fgbg']: pred_fgbg,
                 net_names['raw_cropped']: raw_cropped
             }) +
@@ -118,8 +118,8 @@ def predict(**kwargs):
         gp.ZarrWrite(
             {
                 raw_cropped: '/volumes/raw_cropped',
-                pred_threeclass: '/volumes/pred_threeclass',
-                pred_class_max: '/volumes/pred_class_max',
+                pred_labels: '/volumes/pred_labels',
+                pred_label_max: '/volumes/pred_label_max',
                 pred_fgbg: '/volumes/pred_fgbg',
             },
             output_dir=kwargs['output_folder'],

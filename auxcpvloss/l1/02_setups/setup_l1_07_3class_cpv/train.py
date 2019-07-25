@@ -28,13 +28,17 @@ def train_until(**kwargs):
     raw = gp.ArrayKey('RAW')
     raw_cropped = gp.ArrayKey('RAW_CROPPED')
     gt_threeclass = gp.ArrayKey('GT_THREECLASS')
+    gt_labels = gp.ArrayKey('GT_LABELS')
+    gt_cpv = gp.ArrayKey('GT_CPV')
+    gt_points = gp.PointsKey('GT_CPV_POINTS')
 
     loss_weights_threeclass = gp.ArrayKey('LOSS_WEIGHTS_THREECLASS')
 
     pred_threeclass = gp.ArrayKey('PRED_THREECLASS')
+    pred_cpv = gp.ArrayKey('PRED_CPV')
 
     pred_threeclass_gradients = gp.ArrayKey('PRED_THREECLASS_GRADIENTS')
-
+    pred_cpv_gradients = gp.ArrayKey('PRED_CPV_GRADIENTS')
 
     with open(os.path.join(kwargs['output_folder'],
                            kwargs['name'] + '_config.json'), 'r') as f:
@@ -52,6 +56,8 @@ def train_until(**kwargs):
     request.add(raw, input_shape_world)
     request.add(raw_cropped, output_shape_world)
     request.add(gt_threeclass, output_shape_world)
+    request.add(gt_labels, output_shape_world)
+    request.add(gt_cpv, output_shape_world)
     request.add(anchor, output_shape_world)
     request.add(loss_weights_threeclass, output_shape_world)
 
@@ -61,9 +67,11 @@ def train_until(**kwargs):
     snapshot_request = gp.BatchRequest()
     snapshot_request.add(raw_cropped, output_shape_world)
     snapshot_request.add(gt_threeclass, output_shape_world)
+    snapshot_request.add(gt_labels, output_shape_world)
     snapshot_request.add(pred_threeclass, output_shape_world)
     # snapshot_request.add(pred_threeclass_gradients, output_shape_world)
-
+    snapshot_request.add(pred_cpv, output_shape_world)
+    # snapshot_request.add(pred_cpv_gradients, output_shape_world)
 
     if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
         raise NotImplementedError("train node for {} not implemented".format(
@@ -96,22 +104,35 @@ def train_until(**kwargs):
     pipeline = (
         tuple(
             # read batches from the HDF5 file
-            sourceNode(
-                fls[t] + "." + kwargs['input_format'],
-                datasets={
-                    raw: 'volumes/raw',
-                    gt_threeclass: 'volumes/gt_threeclass',
-                    anchor: 'volumes/gt_threeclass',
-                },
-                array_specs={
-                    raw: gp.ArraySpec(interpolatable=True),
-                    gt_threeclass: gp.ArraySpec(interpolatable=False),
-                    anchor: gp.ArraySpec(interpolatable=False)
-                }
+            (
+                sourceNode(
+                    fls[t] + "." + kwargs['input_format'],
+                    datasets={
+                        raw: 'volumes/raw',
+                        gt_labels: 'volumes/gt_labels',
+                        gt_threeclass: 'volumes/gt_threeclass',
+                        anchor: 'volumes/gt_fgbg',
+                    },
+                    array_specs={
+                        raw: gp.ArraySpec(interpolatable=True),
+                        gt_labels: gp.ArraySpec(interpolatable=False),
+                        gt_threeclass: gp.ArraySpec(interpolatable=False),
+                        anchor: gp.ArraySpec(interpolatable=False)
+                    }
+                ),
+                gp.CsvIDPointsSource(
+                    fls[t] + ".csv",
+                    gt_points,
+                    points_spec=gp.PointsSpec(roi=gp.Roi(
+                        gp.Coordinate((0, 0, 0)),
+                        gp.Coordinate(shapes[t])))
+                )
             )
             + gp.MergeProvider()
             + gp.Pad(raw, None)
             + gp.Pad(gt_threeclass, None)
+            + gp.Pad(gt_labels, None)
+            + gp.Pad(gt_points, None)
 
             # chose a random location for each requested batch
             + gp.RandomLocation()
@@ -145,9 +166,14 @@ def train_until(**kwargs):
         # grow a boundary between labels
         # TODO: check
         # gp.GrowBoundary(
-        #     gt_threeclass,
+        #     gt_labels,
         #     steps=1,
         #     only_xy=False) +
+
+        gp.AddCPV(
+            gt_points,
+            gt_labels,
+            gt_cpv) +
 
         gp.BalanceLabels(
             gt_threeclass,
@@ -170,15 +196,19 @@ def train_until(**kwargs):
             inputs={
                 net_names['raw']: raw,
                 net_names['anchor']: anchor,
+                net_names['gt_labels']: gt_labels,
                 net_names['gt_threeclass']: gt_threeclass,
+                net_names['gt_cpv']: gt_cpv,
                 net_names['loss_weights_threeclass']: loss_weights_threeclass
             },
             outputs={
                 net_names['pred_threeclass']: pred_threeclass,
+                net_names['pred_cpv']: pred_cpv,
                 net_names['raw_cropped']: raw_cropped,
             },
             gradients={
                 net_names['pred_threeclass']: pred_threeclass_gradients,
+                net_names['pred_cpv']: pred_cpv_gradients
             },
             save_every=kwargs['checkpoints']) +
 
@@ -188,6 +218,8 @@ def train_until(**kwargs):
                 raw: '/volumes/raw',
                 raw_cropped: 'volumes/raw_cropped',
                 gt_threeclass: '/volumes/gt_threeclass',
+                pred_threeclass: '/volumes/pred_threeclass',
+                pred_cpv: '/volumes/pred_cpv',
             },
             output_dir=os.path.join(kwargs['output_folder'], 'snapshots'),
             output_filename='batch_{iteration}.hdf',
