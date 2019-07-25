@@ -13,6 +13,7 @@ except Exception as e:
     print(e)
 import os
 import sys
+import time
 
 import h5py
 from joblib import Parallel, delayed
@@ -296,6 +297,7 @@ def get_checkpoint_list(name, train_folder):
 @time_func
 def validate_checkpoint(args, config, data, checkpoint, train_folder,
                         test_folder, output_folder):
+    logger.info("validating checkpoint %d", checkpoint)
     # create test iteration folders
     pred_folder = os.path.join(output_folder, 'processed', str(checkpoint))
     inst_folder = os.path.join(output_folder, 'instanced', str(checkpoint))
@@ -308,13 +310,16 @@ def validate_checkpoint(args, config, data, checkpoint, train_folder,
     checkpoint_file = get_checkpoint_file(checkpoint,
                                           config['model']['train_net_name'],
                                           train_folder)
+    logger.info("predicting checkpoint %d", checkpoint)
     predict(args, config, config['model']['test_net_name'], data,
             checkpoint_file, test_folder, pred_folder)
 
     # label
+    logger.info("labelling checkpoint %d", checkpoint)
     label(args, config, data, pred_folder, inst_folder)
 
     # evaluate
+    logger.info("evaluating checkpoint %d", checkpoint)
     acc = evaluate(args, config, data, inst_folder, eval_folder)
 
     return acc
@@ -326,7 +331,6 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     accs = []
     ckpts = []
     for checkpoint in checkpoints:
-        print(checkpoint, output_folder)
         acc = validate_checkpoint(args, config, data, checkpoint,
                                   train_folder, test_folder, output_folder)
         ckpts.append(checkpoint)
@@ -338,11 +342,11 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
         best_checkpoint = ckpts[-1]
     else:
         best_checkpoint = ckpts[np.argmax(accs)]
-    print('best checkpoint: ', best_checkpoint)
+    logger.info('best checkpoint: %d', best_checkpoint)
     return best_checkpoint
 
 
-def label_sample(args, config, data, sample, pred_folder, output_folder):
+def label_sample(args, config, data, pred_folder, output_folder, sample):
     label = importlib.import_module(
         args.app + '.02_setups.' + args.setup + '.label')
 
@@ -372,9 +376,9 @@ def label(args, config, data, pred_folder, output_folder):
                                config['prediction']['output_format'])
     num_workers = config['postprocessing']['watershed'].get("num_workers", 1)
     if num_workers > 1:
-        Parallel(n_jobs=num_workers, verbose=1) \
-            (delayed(label_sample)(args, config, data, s, pred_folder,
-                                   output_folder) for s in samples)
+        Parallel(n_jobs=num_workers, backend='multiprocessing', verbose=1) \
+            (delayed(label_sample)(args, config, data, pred_folder,
+                                   output_folder, s) for s in samples)
     else:
         for sample in samples:
             label_sample(args, config, data, sample, pred_folder,
@@ -407,7 +411,8 @@ def evaluate(args, config, data, inst_folder, output_folder):
     # TODO: sorry, need to add zarr to evaluation script
     num_workers = config['evaluation'].get("num_workers", 1)
     if num_workers > 1:
-        metric_dicts = Parallel(n_jobs=num_workers, verbose=1) \
+        metric_dicts = Parallel(n_jobs=num_workers, backend='multiprocessing',
+                                verbose=1) \
             (delayed(evaluate_sample)(config, data, s, inst_folder,
                                       output_folder, file_format)
              for s in samples)
@@ -439,7 +444,8 @@ def main():
     if "CUDA_VISIBLE_DEVICES" not in os.environ:
         selectedGPU = util.selectGPU()
         if selectedGPU is None:
-            print("no free GPU available!")
+            logger.error("no free GPU available!")
+            exit(-1)
         else:
             os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             os.environ["CUDA_VISIBLE_DEVICES"] = str(selectedGPU)
@@ -475,11 +481,10 @@ def main():
     logging.basicConfig(
         level=config['general']['logging'],
         handlers=[
-            logging.FileHandler("{}/train.log".format(train_folder)),
+            logging.FileHandler(os.path.join(base, "run.log"), mode='a'),
             logging.StreamHandler(sys.stdout)
         ])
     logger.info('attention: using config file %s', args.config)
-
 
     # update config with command line values
     update_config(args, config)
@@ -516,7 +521,7 @@ def main():
             try:
                 checkpoint = int(checkpoint_path.split('_')[-1])
             except ValueError:
-                print('Could not convert checkpoint to int.')
+                logger.error('Could not convert checkpoint to int.')
                 raise
 
         if checkpoint is None and \
@@ -536,6 +541,7 @@ def main():
             data = config['data']['val_data']
         checkpoints = get_checkpoint_list(config['model']['train_net_name'],
                                           train_folder)
+        logger.info("validating all checkpoints")
         checkpoint = validate_checkpoints(args, config, data, checkpoints,
                                           train_folder, test_folder,
                                           val_folder)
@@ -562,12 +568,14 @@ def main():
 
         checkpoint_file = get_checkpoint_file(
             checkpoint, config['model']['train_net_name'], train_folder)
+        logger.info("predicting checkpoint %d", checkpoint)
         predict(args, config, config['model']['test_net_name'],
                 config['data']['test_data'], checkpoint_file,
                 test_folder, pred_folder)
 
     if 'all' in args.do or 'label' in args.do:
         os.makedirs(inst_folder, exist_ok=True)
+        logger.info("labelling checkpoint %d", checkpoint)
         label(args, config, config['data']['test_data'], pred_folder,
               inst_folder)
 
@@ -576,6 +584,7 @@ def main():
 
     if 'all' in args.do or 'evaluate' in args.do:
         os.makedirs(eval_folder, exist_ok=True)
+        logger.info("evaluating checkpoint %d", checkpoint)
         _ = evaluate(args, config, config['data']['test_data'], inst_folder,
                      eval_folder)
 

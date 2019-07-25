@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import sys
 
@@ -9,21 +10,24 @@ import scipy.ndimage
 
 import zarr
 
+logger = logging.getLogger(__name__)
 
-def watershed(surface, markers, fg, outFl, its=1):
+def watershed(sample, surface, markers, fg, outFl, its=1):
     # compute watershed
     ws = mahotas.cwatershed(surface, markers)
 
     # write watershed directly
-    print("watershed output: ", ws.shape, ws.dtype, ws.max(), ws.min())
+    logger.debug("%s: watershed output: %s %s %f %f",
+                 sample, ws.shape, ws.dtype, ws.max(), ws.min())
     wsUI = ws.astype(np.uint16)
     outFl.create_dataset('volumes/watershed_seg', data = wsUI,
                          compression='gzip')
 
     # overlay fg and write
     wsFG = ws * fg
-    print("watershed (foreground only):", wsFG.shape, wsFG.dtype,
-          wsFG.max(), wsFG.min())
+    logger.debug("%s: watershed (foreground only): %s %s %f %f",
+                 sample, wsFG.shape, wsFG.dtype, wsFG.max(),
+                 wsFG.min())
     wsFGUI = wsFG.astype(np.uint16)
     outFl.create_dataset('volumes/watershed_seg_fg', data = wsFGUI,
                          compression='gzip')
@@ -39,6 +43,7 @@ def watershed(surface, markers, fg, outFl, its=1):
 
 
 def label(**kwargs):
+    logger.info("labelling %s %s", kwargs['sample'], kwargs['gt'])
     sample = os.path.join(kwargs['pred_folder'],
                           kwargs['sample'] + "." + kwargs['pred_format'])
     if kwargs['pred_format'] == "zarr":
@@ -67,6 +72,8 @@ def label(**kwargs):
 
     # threshold bg/fg
     fgbg = 1.0 *(fgbg > kwargs['fg_thresh'])
+    if np.count_nonzero(fgbg) == 0:
+        raise RuntimeError("%s: no foreground found", kwargs['sample'])
 
     # combine affinities
     affs_xyz = 1.0 - 0.33*(affs[0] + affs[1] + affs[2])
@@ -81,26 +88,32 @@ def label(**kwargs):
             with h5py.File(kwargs['gt'], 'r') as gt:
                 gt_labels = np.array(gt[kwargs['gt_key']])
         elif kwargs['gt_format'] == "zarr":
-            with zarr.open(kwargs['gt'], 'r') as gt:
-                gt_labels = np.array(gt[kwargs['gt_key']])
+            gt = zarr.open(kwargs['gt'], 'r')
+            gt_labels = np.array(gt[kwargs['gt_key']])
         else:
             raise NotImplementedError("invalid gt format")
-        print("gt min/max", gt_labels.min(), gt_labels.max())
+        logger.debug("%s: gt min %f, max %f",
+                     kwargs['sample'], gt_labels.min(), gt_labels.max())
 
     # compute markers for watershed (seeds)
     # TODO: check
     # markers = 1*(affs_xyz > kwargs['aff_thresh'])
     seeds = 1*(affs > kwargs['aff_thresh'])
-    seeds = 0.33*(seeds[0] + seeds[1] + seeds[2])
-    print("seeds min/max", np.min(seeds), np.max(seeds))
-    seeds = seeds.astype('uint16')
+    seeds = (seeds[0] + seeds[1] + seeds[2])
+    logger.debug("%s: seeds min/max %f %f",
+                 kwargs['sample'], np.min(seeds), np.max(seeds))
+    seeds = (seeds>2).astype('uint16')
+    if np.count_nonzero(seeds) == 0:
+        raise RuntimeError("%s: no seed points found for watershed",
+                           kwargs['sample'])
     output_file.create_dataset('volumes/seeds', data = seeds,
                                compression='gzip')
     markers, cnt = scipy.ndimage.label(seeds)
-    print("markers min/max, cnt", np.min(markers), np.max(markers), cnt)
+    logger.debug("%s: markers min %f, max %f, cnt %f",
+                 kwargs['sample'], np.min(markers), np.max(markers), cnt)
 
     # compute watershed
-    watershed(affs_xyz, markers, fgbg, output_file,
+    watershed(kwargs['sample'], affs_xyz, markers, fgbg, output_file,
               its=kwargs['num_dilations'])
 
     if kwargs['output_format'] == "hdf":
