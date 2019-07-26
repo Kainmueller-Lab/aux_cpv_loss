@@ -12,6 +12,7 @@ try:
 except Exception as e:
     print(e)
 import os
+import shutil
 import sys
 import time
 
@@ -22,6 +23,28 @@ import toml
 
 from auxcpvloss import util
 from evaluateInstanceSegmentation import evaluate_file
+
+
+def merge_dicts(sink, source):
+    if not isinstance(sink, dict) or not isinstance(source, dict):
+        raise TypeError('Args to merge_dicts should be dicts')
+
+    for k, v in source.items():
+        if isinstance(source[k], dict) and isinstance(sink.get(k), dict):
+            sink[k] = merge_dicts(sink[k], v)
+        else:
+            sink[k] = v
+
+    return sink
+
+
+def backup_and_copy_file(source, target, fn):
+    target = os.path.join(target, fn)
+    if os.path.exists(target):
+        os.replace(target, target + "_backup" + str(int(time.time())))
+    if source is not None:
+        source = os.path.join(source, fn)
+        shutil.copy2(source, target)
 
 
 def time_func(func):
@@ -40,7 +63,7 @@ logger = logging.getLogger(__name__)
 def get_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-c', '--config', dest='config', default=None,
+    parser.add_argument('-c', '--config', action='append',
                         help=('Configuration files to use. For defaults, '
                               'see `config/default.toml`.'))
     parser.add_argument('-a', '--app', dest='app', required=True,
@@ -102,6 +125,12 @@ def create_folders(args, expname):
     # create experiment folder
     filebase = os.path.join(args.root, expname)
     os.makedirs(filebase, exist_ok=True)
+
+    setup = os.path.join(args.app, '02_setups', args.setup)
+    backup_and_copy_file(setup, filebase, 'train.py')
+    backup_and_copy_file(setup, filebase, 'mknet.py')
+    backup_and_copy_file(setup, filebase, 'predict.py')
+    backup_and_copy_file(setup, filebase, 'label.py')
 
     # create train folders
     train_folder = os.path.join(filebase, 'train')
@@ -210,28 +239,6 @@ def get_list_train_files(config):
         raise ValueError(
             "please provide file or directory for data/train_data", data)
     return files
-
-
-# def get_list_val_files(config):
-#     if 'fold' in config['validation']:
-#         data = config['data']['train_data']
-#         if not os.path.isdir(data):
-#             raise NotImplementedError(
-#                 "fold-based validation not implemented yet with multiple samples per file")
-#         files = glob(os.path.join(
-#             data + "_fold" + config['validation']['fold'],
-#             "*." + config['data']['input_format']))
-#     else:
-#         data = config['data']['val_data']
-#         if os.path.isfile(data):
-#             files = [data]
-#         elif os.path.isdir(data):
-#             files = glob(os.path.join(data,
-#                                       "*." + config['data']['input_format']))
-#         else:
-#             raise ValueError(
-#                 "please provide file or directory for data/train_data", data)
-#     return files
 
 
 def get_list_samples(config, data, file_format):
@@ -458,28 +465,19 @@ def main():
     if "CUDA_VISIBLE_DEVICES" not in os.environ:
         selectedGPU = util.selectGPU()
         if selectedGPU is None:
-            logger.error("no free GPU available!")
-            exit(-1)
+            raise RuntimeError("no free GPU available!")
         else:
             os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             os.environ["CUDA_VISIBLE_DEVICES"] = str(selectedGPU)
-    # if "CUDA_VISIBLE_DEVICES" not in os.environ:
-    #     os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    else:
+        logger.info("CUDA_VISIBILE_DEVICES already set, device {}".format(
+            os.environ["CUDA_VISIBILE_DEVICES"]))
 
     # parse command line arguments
     args = get_arguments()
 
     if not args.do:
         raise ValueError("Provide a task to do (-d/--do)")
-
-    # read config file
-    if args.config is None:
-        args.config = "config/default.toml"
-        logger.warning('attention: using default config file %s', args.config)
-    try:
-        config = toml.load(args.config)
-    except:
-        raise IOError('Could not read config file! Please check!')
 
     # get experiment name
     if args.setup is not None:
@@ -490,6 +488,19 @@ def main():
 
     # create folder structure for experiment
     base, train_folder, val_folder, test_folder = create_folders(args, expname)
+
+    # read config file
+    if args.config is None and args.expid is None:
+        raise RuntimeError("No config file provided (-c/--config)")
+    elif args.config is None:
+        args.config = [os.path.join(base, 'config.toml')]
+    try:
+        config = {}
+        for conf in args.config:
+            config = merge_dicts(config, toml.load(conf))
+    except:
+        raise IOError('Could not read config file: {}! Please check!'.format(
+            conf))
 
     # set logging level
     logging.basicConfig(
@@ -502,9 +513,7 @@ def main():
 
     # update config with command line values
     update_config(args, config)
-    if os.path.exists(os.path.join(base, "config.toml")):
-        os.replace(os.path.join(base, "config.toml"),
-                   os.path.join(base, "config.toml_backup"))
+    backup_and_copy_file(None, base, 'config.toml')
     with open(os.path.join(base, "config.toml"), 'w') as f:
         toml.dump(config, f)
     if args.debug_args:
