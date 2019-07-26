@@ -51,9 +51,9 @@ def time_func(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         t0 = datetime.now()
-        func(*args, **kwargs)
+        ret = func(*args, **kwargs)
         logger.info('time %s: %s', func.__name__, str(datetime.now() - t0))
-
+        return ret
     return wrapper
 
 
@@ -199,6 +199,8 @@ def mknet(args, config, train_folder, test_folder):
 
 @time_func
 def train(args, config, train_folder):
+    if 'CUDA_VISIBILE_DEVICES' not in os.environ:
+        raise RuntimeError("no free GPU available!")
     child_pid = os.fork()
     if child_pid == 0:
         data_files = get_list_train_files(config)
@@ -263,6 +265,8 @@ def get_list_samples(config, data, file_format):
 
 def predict_sample(args, config, name, data, sample, checkpoint, input_folder,
                    output_folder):
+    if 'CUDA_VISIBILE_DEVICES' not in os.environ:
+        raise RuntimeError("no free GPU available!")
 
     predict = importlib.import_module(
         args.app + '.02_setups.' + args.setup + '.predict')
@@ -342,6 +346,7 @@ def validate_checkpoint(args, config, data, checkpoint, train_folder,
     # evaluate
     logger.info("evaluating checkpoint %d", checkpoint)
     acc = evaluate(args, config, data, inst_folder, eval_folder)
+    logger.info("AP checkpoint %6d: %.4f", checkpoint, acc)
 
     return acc
 
@@ -357,9 +362,15 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
         ckpts.append(checkpoint)
         accs.append(acc)
 
+    for ch, acc in zip(checkpoints, accs):
+        logger.info("AP checkpoint %6d: %.4f", ch, acc)
+
+    for ch, acc in zip(checkpoints, accs):
+        logger.info("AP %d: %f", ch, acc)
+
     if config['general']['debug'] and None in accs:
-        logger.error(
-            "None in checkpoint found: {} (continuing with last)".format(accs))
+        logger.error("None in checkpoint found: %s (continuing with last)",
+                     tuple(accs))
         best_checkpoint = ckpts[-1]
     else:
         best_checkpoint = ckpts[np.argmax(accs)]
@@ -417,11 +428,11 @@ def evaluate_sample(config, data, sample, inst_folder, output_folder,
         gt_key = config['data']['gt_key']
 
     sample_path = os.path.join(inst_folder, sample + "." + file_format)
-    metric_dict = evaluate_file(sample_path, gt_path,
-                                res_key=config['evaluation']['res_key'],
-                                gt_key=gt_key,
-                                out_dir=output_folder, suffix="",
-                                debug=config['general']['debug'])
+    return evaluate_file(sample_path, gt_path,
+                         res_key=config['evaluation']['res_key'],
+                         gt_key=gt_key,
+                         out_dir=output_folder, suffix="",
+                         debug=config['general']['debug'])
 
 
 @time_func
@@ -433,7 +444,7 @@ def evaluate(args, config, data, inst_folder, output_folder):
     num_workers = config['evaluation'].get("num_workers", 1)
     if num_workers > 1:
         metric_dicts = Parallel(n_jobs=num_workers, backend='multiprocessing',
-                                verbose=1) \
+                                verbose=0) \
             (delayed(evaluate_sample)(config, data, s, inst_folder,
                                       output_folder, file_format)
              for s in samples)
@@ -447,11 +458,12 @@ def evaluate(args, config, data, inst_folder, output_folder):
             metric_dicts.append(metric_dict)
 
     accs = []
-    for metric_dict in metric_dicts:
+    for metric_dict, sample in zip(metric_dicts, samples):
         if metric_dict is None:
             continue
         for k in config['evaluation']['metric'].split('/'):
             metric_dict = metric_dict[k]
+        logger.info("AP sample %-19s: %.4f", sample, metric_dict)
         accs.append(metric_dict)
 
     return np.mean(accs)
@@ -465,7 +477,7 @@ def main():
     if "CUDA_VISIBLE_DEVICES" not in os.environ:
         selectedGPU = util.selectGPU()
         if selectedGPU is None:
-            raise RuntimeError("no free GPU available!")
+            logger.warning("no free GPU available!")
         else:
             os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             os.environ["CUDA_VISIBLE_DEVICES"] = str(selectedGPU)
@@ -610,8 +622,9 @@ def main():
     if 'all' in args.do or 'evaluate' in args.do:
         os.makedirs(eval_folder, exist_ok=True)
         logger.info("evaluating checkpoint %d", checkpoint)
-        _ = evaluate(args, config, config['data']['test_data'], inst_folder,
-                     eval_folder)
+        app = evaluate(args, config, config['data']['test_data'], inst_folder,
+                       eval_folder)
+        logger.info("AP TEST checkpoint %d: %.4f", checkpoint, acc)
 
     if 'all' in args.do or 'visualize' in args.do:
         visualize()
