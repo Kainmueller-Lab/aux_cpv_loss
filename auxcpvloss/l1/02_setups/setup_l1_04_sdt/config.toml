@@ -1,0 +1,25 @@
+[optimizer]
+loss = 'mse'
+
+[training]
+folds = '12'
+
+[validation]
+fold = '3'
+
+[evaluation]
+metric = 'confusion_matrix/th_0_5/fscore'
+res_key = 'volumes/watershed_seg_fg_dilated'
+num_workers = 8
+
+[preprocessing]
+
+[postprocessing]
+
+[postprocessing.watershed]
+num_dilations = 1
+fg_thresh = 0.0
+seed_thresh = -0.10
+surf_key = "volumes/pred_sdt"
+fgbg_key = "volumes/pred_sdt"
+raw_key = "volumes/raw_cropped"

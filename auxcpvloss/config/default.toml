@@ -31,6 +31,7 @@ kernel_size = 3
 num_repetitions = 2
 upsampling = 'trans_conv'
 loss_affs_coeff = 10
+loss_threeclass_coeff = 10
 loss_fgbg_coeff = 1
 loss_cpv_coeff = 25
 
