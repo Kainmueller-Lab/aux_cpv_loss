@@ -167,8 +167,6 @@ def update_config(args, config):
     if 'input_format' not in config['data']:
         raise ValueError("Please provide data/input_format in cl or config")
 
-    print(config)
-
 def setDebugValuesForConfig(config):
     config['training']['max_iterations'] = 10
     config['training']['checkpoints'] = 10
@@ -176,8 +174,6 @@ def setDebugValuesForConfig(config):
     config['training']['profiling'] = 10
     # config['training']['num_workers'] = 1
     # config['training']['cache_size'] = 0
-
-    print(config)
 
 
 @time_func
@@ -199,7 +195,7 @@ def mknet(args, config, train_folder, test_folder):
 
 @time_func
 def train(args, config, train_folder):
-    if 'CUDA_VISIBILE_DEVICES' not in os.environ:
+    if 'CUDA_VISIBLE_DEVICES' not in os.environ:
         raise RuntimeError("no free GPU available!")
     child_pid = os.fork()
     if child_pid == 0:
@@ -265,7 +261,7 @@ def get_list_samples(config, data, file_format):
 
 def predict_sample(args, config, name, data, sample, checkpoint, input_folder,
                    output_folder):
-    if 'CUDA_VISIBILE_DEVICES' not in os.environ:
+    if 'CUDA_VISIBLE_DEVICES' not in os.environ:
         raise RuntimeError("no free GPU available!")
 
     predict = importlib.import_module(
@@ -474,17 +470,6 @@ def visualize():
 
 
 def main():
-    if "CUDA_VISIBLE_DEVICES" not in os.environ:
-        selectedGPU = util.selectGPU()
-        if selectedGPU is None:
-            logger.warning("no free GPU available!")
-        else:
-            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(selectedGPU)
-    else:
-        logger.info("CUDA_VISIBILE_DEVICES already set, device {}".format(
-            os.environ["CUDA_VISIBILE_DEVICES"]))
-
     # parse command line arguments
     args = get_arguments()
 
@@ -523,6 +508,19 @@ def main():
         ])
     logger.info('attention: using config file %s', args.config)
 
+    if "CUDA_VISIBLE_DEVICES" not in os.environ:
+        selectedGPU = util.selectGPU()
+        if selectedGPU is None:
+            logger.warning("no free GPU available!")
+        else:
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(selectedGPU)
+        logger.info("setting CUDA_VISIBLE_DEVICES to device {}".format(
+            selectedGPU))
+    else:
+        logger.info("CUDA_VISIBILE_DEVICES already set, device {}".format(
+            os.environ["CUDA_VISIBLE_DEVICES"]))
+
     # update config with command line values
     update_config(args, config)
     backup_and_copy_file(None, base, 'config.toml')
@@ -530,6 +528,7 @@ def main():
         toml.dump(config, f)
     if args.debug_args:
         setDebugValuesForConfig(config)
+    logger.info('used config: %s', config)
 
     # create network
     if 'all' in args.do or 'mknet' in args.do:

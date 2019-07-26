@@ -33,7 +33,6 @@ def selectGPU():
     selectedGPU = None
     for g in range(gpuCnt):
         if g not in gpuInUse:
-            print(g)
             selectedGPU = g
             break
     return selectedGPU
