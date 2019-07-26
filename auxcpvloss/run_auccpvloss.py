@@ -621,7 +621,7 @@ def main():
     if 'all' in args.do or 'evaluate' in args.do:
         os.makedirs(eval_folder, exist_ok=True)
         logger.info("evaluating checkpoint %d", checkpoint)
-        app = evaluate(args, config, config['data']['test_data'], inst_folder,
+        acc = evaluate(args, config, config['data']['test_data'], inst_folder,
                        eval_folder)
         logger.info("AP TEST checkpoint %d: %.4f", checkpoint, acc)
 
