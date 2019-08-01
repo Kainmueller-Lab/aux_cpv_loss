@@ -101,6 +101,9 @@ def get_arguments():
                         type=int,
                         help='Specify which checkpoint to use.')
 
+    parser.add_argument("--run_from_exp", action="store_true",
+                        help='run from setup or from experiment folder')
+
     # train / val / test datasets
     parser.add_argument('--input-format', dest='input_format',
                         choices=['hdf', 'zarr', 'n5', 'tif'],
@@ -126,11 +129,12 @@ def create_folders(args, expname):
     filebase = os.path.join(args.root, expname)
     os.makedirs(filebase, exist_ok=True)
 
-    setup = os.path.join(args.app, '02_setups', args.setup)
-    backup_and_copy_file(setup, filebase, 'train.py')
-    backup_and_copy_file(setup, filebase, 'mknet.py')
-    backup_and_copy_file(setup, filebase, 'predict.py')
-    backup_and_copy_file(setup, filebase, 'label.py')
+    if args.expid is None and args.run_from_exp:
+        setup = os.path.join(args.app, '02_setups', args.setup)
+        backup_and_copy_file(setup, filebase, 'train.py')
+        backup_and_copy_file(setup, filebase, 'mknet.py')
+        backup_and_copy_file(setup, filebase, 'predict.py')
+        backup_and_copy_file(setup, filebase, 'label.py')
 
     # create train folders
     train_folder = os.path.join(filebase, 'train')
@@ -178,8 +182,12 @@ def setDebugValuesForConfig(config):
 
 @time_func
 def mknet(args, config, train_folder, test_folder):
-    mknet = importlib.import_module(
-        args.app + '.02_setups.' + args.setup + '.mknet')
+    if args.run_from_exp:
+        mknet = importlib.import_module(
+            config['base'].replace("/", ".") + '.mknet')
+    else:
+        mknet = importlib.import_module(
+            args.app + '.02_setups.' + args.setup + '.mknet')
 
     mknet.mk_net(name=config['model']['train_net_name'],
                  input_shape=config['model']['train_input_shape'],
@@ -200,8 +208,12 @@ def train(args, config, train_folder):
     child_pid = os.fork()
     if child_pid == 0:
         data_files = get_list_train_files(config)
-        train = importlib.import_module(
-            args.app + '.02_setups.' + args.setup + '.train')
+        if args.run_from_exp:
+            train = importlib.import_module(
+                config['base'].replace("/", ".") + '.train')
+        else:
+            train = importlib.import_module(
+                args.app + '.02_setups.' + args.setup + '.train')
 
         train.train_until(name=config['model']['train_net_name'],
                           max_iteration=config['training']['max_iterations'],
@@ -264,8 +276,12 @@ def predict_sample(args, config, name, data, sample, checkpoint, input_folder,
     if 'CUDA_VISIBLE_DEVICES' not in os.environ:
         raise RuntimeError("no free GPU available!")
 
-    predict = importlib.import_module(
-        args.app + '.02_setups.' + args.setup + '.predict')
+    if args.run_from_exp:
+        predict = importlib.import_module(
+            config['base'].replace("/", ".") + '.predict')
+    else:
+        predict = importlib.import_module(
+            args.app + '.02_setups.' + args.setup + '.predict')
 
     predict.predict(name=name, sample=sample, checkpoint=checkpoint,
                     data_folder=data, input_folder=input_folder,
@@ -389,8 +405,12 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
 
 
 def label_sample(args, config, data, pred_folder, output_folder, sample):
-    label = importlib.import_module(
-        args.app + '.02_setups.' + args.setup + '.label')
+    if args.run_from_exp:
+        label = importlib.import_module(
+            config['base'].replace("/", ".") + '.label')
+    else:
+        label = importlib.import_module(
+            args.app + '.02_setups.' + args.setup + '.label')
 
     # TODO: logging doesn't work in parallel case
     if not config['general']['overwrite'] and \
@@ -512,6 +532,7 @@ def main():
     except:
         raise IOError('Could not read config file: {}! Please check!'.format(
             conf))
+    config['base'] = base
 
     # set logging level
     logging.basicConfig(
