@@ -76,7 +76,7 @@ def normalize_min_max(x, mi, ma, clip=False, eps=1e-20, dtype=np.float32):
 
 def normalize(args, raw, sample):
     print("{} before norm {}: min {}, max {}, mean {}, std {}, median {}".format(
-        sample, args.normalize, np.max(raw), np.min(raw), np.mean(raw),
+        sample, args.normalize, np.min(raw), np.max(raw), np.mean(raw),
         np.std(raw), np.median(raw)))
 
     if args.normalize == "minmax":
@@ -85,7 +85,7 @@ def normalize(args, raw, sample):
         raw = normalize_percentile(raw, args.raw_min, args.raw_max)
 
     print("{} after norm {}:  min {}, max {}, mean {}, std {}, median {}".format(
-        sample, args.normalize, np.max(raw), np.min(raw), np.mean(raw),
+        sample, args.normalize, np.min(raw), np.max(raw), np.mean(raw),
         np.std(raw), np.median(raw)))
     return raw
 

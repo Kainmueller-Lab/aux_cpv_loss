@@ -315,6 +315,20 @@ def get_checkpoint_list(name, train_folder):
             for cp in checkpoints]
 
 
+def select_validation_data(config, train_folder):
+    if config['data'].get('validate_on_train'):
+        data = config['data']['train_data']
+        output_folder = train_folder
+    else:
+        if 'fold' in config['validation']:
+            data = config['data']['val_data'] + \
+                   "_fold" + str(config['validation']['fold'])
+        else:
+            data = config['data']['val_data']
+        output_folder = train_folder
+    return data, output_folder
+
+
 @time_func
 def validate_checkpoint(args, config, data, checkpoint, train_folder,
                         test_folder, output_folder):
@@ -569,27 +583,18 @@ def main():
     # validate all checkpoints
     if ('all' in args.do and args.test_checkpoint == 'best') \
             or 'validate_checkpoints' in args.do:
-
-        if 'fold' in config['validation']:
-            data = config['data']['val_data'] + \
-                   "_fold" + str(config['validation']['fold'])
-        else:
-            data = config['data']['val_data']
+        data, output_folder = select_validation_data(config, train_folder)
         checkpoints = get_checkpoint_list(config['model']['train_net_name'],
                                           train_folder)
         logger.info("validating all checkpoints")
         checkpoint = validate_checkpoints(args, config, data, checkpoints,
                                           train_folder, test_folder,
-                                          val_folder)
+                                          output_folder)
     # validate single checkpoint
     elif 'validate' in args.do:
-        if 'fold' in config['validation']:
-            data = config['data']['val_data'] + \
-                   "_fold" + str(config['validation']['fold'])
-        else:
-            data = config['data']['val_data']
+        data, output_folder = select_validation_data(config, train_folder)
         _ = validate_checkpoint(args, config, data, checkpoint, train_folder,
-                                test_folder, val_folder)
+                                test_folder, output_folder)
 
     if checkpoint is not None:
         pred_folder = os.path.join(test_folder, 'processed', str(checkpoint))
