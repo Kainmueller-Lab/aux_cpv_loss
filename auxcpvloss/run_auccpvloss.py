@@ -315,7 +315,7 @@ def get_checkpoint_list(name, train_folder):
             for cp in checkpoints]
 
 
-def select_validation_data(config, train_folder):
+def select_validation_data(config, train_folder, val_folder):
     if config['data'].get('validate_on_train'):
         data = config['data']['train_data']
         output_folder = train_folder
@@ -325,7 +325,7 @@ def select_validation_data(config, train_folder):
                    "_fold" + str(config['validation']['fold'])
         else:
             data = config['data']['val_data']
-        output_folder = train_folder
+        output_folder = val_folder
     return data, output_folder
 
 
@@ -583,7 +583,8 @@ def main():
     # validate all checkpoints
     if ('all' in args.do and args.test_checkpoint == 'best') \
             or 'validate_checkpoints' in args.do:
-        data, output_folder = select_validation_data(config, train_folder)
+        data, output_folder = select_validation_data(config, train_folder,
+                                                     val_folder)
         checkpoints = get_checkpoint_list(config['model']['train_net_name'],
                                           train_folder)
         logger.info("validating all checkpoints")
@@ -592,7 +593,8 @@ def main():
                                           output_folder)
     # validate single checkpoint
     elif 'validate' in args.do:
-        data, output_folder = select_validation_data(config, train_folder)
+        data, output_folder = select_validation_data(config, train_folder,
+                                                     val_folder)
         _ = validate_checkpoint(args, config, data, checkpoint, train_folder,
                                 test_folder, output_folder)
 
