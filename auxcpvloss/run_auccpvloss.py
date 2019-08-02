@@ -391,9 +391,6 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     for ch, acc in zip(checkpoints, accs):
         logger.info("AP checkpoint %6d: %.4f", ch, acc)
 
-    for ch, acc in zip(checkpoints, accs):
-        logger.info("AP %d: %f", ch, acc)
-
     if config['general']['debug'] and None in accs:
         logger.error("None in checkpoint found: %s (continuing with last)",
                      tuple(accs))
