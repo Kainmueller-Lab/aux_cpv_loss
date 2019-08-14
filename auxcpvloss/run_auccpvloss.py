@@ -120,6 +120,9 @@ def get_arguments():
 
     parser.add_argument("--run_from_exp", action="store_true",
                         help='run from setup or from experiment folder')
+    parser.add_argument("--validate_on_train", action="store_true",
+                        help=('validate using training data'
+                              '(to check for overfitting)'))
 
     # train / val / test datasets
     parser.add_argument('--input-format', dest='input_format',
@@ -187,6 +190,12 @@ def update_config(args, config):
         config['data']['input_format'] = args.input_format
     if 'input_format' not in config['data']:
         raise ValueError("Please provide data/input_format in cl or config")
+
+    if args.validate_on_train:
+        config['data']['validate_on_train'] = True
+    else:
+        config['data']['validate_on_train'] = False
+
 
 def setDebugValuesForConfig(config):
     config['training']['max_iterations'] = 10
