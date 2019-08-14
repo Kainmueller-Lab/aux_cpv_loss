@@ -57,6 +57,23 @@ def time_func(func):
     return wrapper
 
 
+def fork(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            p = Process(target=func, args=args, kwargs=kwargs)
+            p.start()
+            p.join()
+            if p.exitcode != 0:
+                raise RuntimeError("child process died")
+        except KeyboardInterrupt:
+            print("Caught KeyboardInterrupt, terminating workers")
+            p.terminate()
+            p.join()
+            os._exit(-1)
+
+    return wrapper
+
 logger = logging.getLogger(__name__)
 
 
@@ -180,6 +197,7 @@ def setDebugValuesForConfig(config):
     # config['training']['cache_size'] = 0
 
 
+@fork
 @time_func
 def mknet(args, config, train_folder, test_folder):
     if args.run_from_exp:
@@ -201,35 +219,27 @@ def mknet(args, config, train_folder, test_folder):
                  debug=config['general']['debug'])
 
 
+@fork
 @time_func
 def train(args, config, train_folder):
     if 'CUDA_VISIBLE_DEVICES' not in os.environ:
         raise RuntimeError("no free GPU available!")
-    child_pid = os.fork()
-    if child_pid == 0:
-        data_files = get_list_train_files(config)
-        if args.run_from_exp:
-            train = importlib.import_module(
-                config['base'].replace("/", ".") + '.train')
-        else:
-            train = importlib.import_module(
-                args.app + '.02_setups.' + args.setup + '.train')
-
-        train.train_until(name=config['model']['train_net_name'],
-                          max_iteration=config['training']['max_iterations'],
-                          output_folder=train_folder,
-                          data_files=data_files,
-                          voxel_size=config['data']['voxel_size'],
-                          input_format=config['data']['input_format'],
-                          **config['training'],
-                          **config['preprocessing'])
-        os._exit(0)
-
+    data_files = get_list_train_files(config)
+    if args.run_from_exp:
+        train = importlib.import_module(
+            config['base'].replace("/", ".") + '.train')
     else:
-        _, status = os.waitpid(child_pid, 0)
-        exitcode = os.WEXITSTATUS(status)
-        if not os.WIFEXITED(status) or exitcode != 0:
-            raise RuntimeError("training failed, check exception in child process")
+        train = importlib.import_module(
+            args.app + '.02_setups.' + args.setup + '.train')
+
+    train.train_until(name=config['model']['train_net_name'],
+                      max_iteration=config['training']['max_iterations'],
+                      output_folder=train_folder,
+                      data_files=data_files,
+                      voxel_size=config['data']['voxel_size'],
+                      input_format=config['data']['input_format'],
+                      **config['training'],
+                      **config['preprocessing'])
 
 
 def get_list_train_files(config):
@@ -238,10 +248,9 @@ def get_list_train_files(config):
         files = [data]
     elif os.path.isdir(data):
         if 'folds' in config['training']:
-            files = []
-            for c in config['training']['folds']:
-                files += glob(os.path.join(
-                    data + "_fold" + c, "*." + config['data']['input_format']))
+            files = glob(os.path.join(
+                data + "_folds" + config['training']['folds'],
+                "*." + config['data']['input_format']))
         else:
             files = glob(os.path.join(data,
                                       "*." + config['data']['input_format']))
@@ -271,6 +280,7 @@ def get_list_samples(config, data, file_format):
     return samples
 
 
+@fork
 def predict_sample(args, config, name, data, sample, checkpoint, input_folder,
                    output_folder):
     if 'CUDA_VISIBLE_DEVICES' not in os.environ:
@@ -333,7 +343,11 @@ def get_checkpoint_list(name, train_folder):
 
 def select_validation_data(config, train_folder, val_folder):
     if config['data'].get('validate_on_train'):
-        data = config['data']['train_data']
+        if 'folds' in config['training']:
+            data = config['data']['train_data'] + \
+                   "_folds" + str(config['training']['folds'])
+        else:
+            data = config['data']['train_data']
         output_folder = train_folder
     else:
         if 'fold' in config['validation']:

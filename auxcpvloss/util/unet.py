@@ -79,6 +79,17 @@ def downsample(fmaps_in, factors, name='down', padding='valid'):
 
     return fmaps
 
+
+# def repeat(
+#         fmaps_in,
+#         multiples):
+
+#     expanded = tf.expand_dims(fmaps_in, -1)
+#     tiled = tf.tile(expanded, multiples=(1,) + multiples)
+#     repeated = tf.reshape(tiled, tf.shape(fmaps_in) * multiples)
+
+#     return repeated
+
 def upsample(fmaps_in, factors, num_fmaps, activation='relu', name='up',
              padding='valid',
              upsampling="trans_conv"):
@@ -97,6 +108,36 @@ def upsample(fmaps_in, factors, num_fmaps, activation='relu', name='up',
             factors[1],
             factors[2],
             "channels_first")
+
+        # in_shape = tuple(fmaps_in.get_shape().as_list())
+        # num_fmaps_in = in_shape[1]
+        # num_fmaps_out = num_fmaps
+        # out_shape = (
+        #     in_shape[0],
+        #     num_fmaps_out) + tuple(s*f for s, f in zip(in_shape[2:], factors))
+
+        # # (num_fmaps_out * num_fmaps_in)
+        # kernel_variables = tf.get_variable(
+        #     name + '_kernel_variables',
+        #     (num_fmaps_out * num_fmaps_in,),
+        #     dtype=tf.float32)
+        # # (1, 1, 1, num_fmaps_out, num_fmaps_in)
+        # kernel_variables = tf.reshape(
+        #     kernel_variables,
+        #     (1, 1, 1) + (num_fmaps_out, num_fmaps_in))
+        # # (f_z, f_y_ f_x, num_fmaps_out, num_fmaps_in)
+        # constant_upsample_filter = repeat(
+        #     kernel_variables,
+        #     tuple(factors) + (1, 1))
+
+        # fmaps = tf.nn.conv3d_transpose(
+        #     fmaps_in,
+        #     filter=constant_upsample_filter,
+        #     output_shape=out_shape,
+        #     strides=(1, 1) + tuple(factors),
+        #     padding='VALID',
+        #     data_format='NCDHW',
+        #     name=name)
 
         fmaps = conv_layer(
             inputs=fmaps_in,
@@ -321,20 +362,3 @@ def unet(
     print(prefix + "f_out: " + str(f_out.shape))
 
     return f_out
-
-
-def main():
-    raw = tf.placeholder(tf.float32, shape=(1, 1, 84, 268, 268))
-
-    model = unet(raw, 12, [3, 3, 3], [3, 3, 3], [[1, 3, 3],[1, 3, 3],[1, 3, 3]])
-    tf.train.export_meta_graph(filename='unet.meta')
-
-    with tf.Session() as session:
-        session.run(tf.initialize_all_variables())
-        tf.summary.FileWriter('.', graph=tf.get_default_graph())
-
-    print(model.shape)
-
-
-if __name__ == "__main__":
-    main()
