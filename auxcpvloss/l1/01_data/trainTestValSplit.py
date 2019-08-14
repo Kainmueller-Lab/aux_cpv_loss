@@ -14,9 +14,9 @@ def main():
     trainD_f1 = os.path.join(args.out_dir, "train_fold1")
     trainD_f2 = os.path.join(args.out_dir, "train_fold2")
     trainD_f3 = os.path.join(args.out_dir, "train_fold3")
-    trainD_f12 = os.path.join(args.out_dir, "train_fold12")
-    trainD_f13 = os.path.join(args.out_dir, "train_fold13")
-    trainD_f23 = os.path.join(args.out_dir, "train_fold23")
+    trainD_f12 = os.path.join(args.out_dir, "train_folds12")
+    trainD_f13 = os.path.join(args.out_dir, "train_folds13")
+    trainD_f23 = os.path.join(args.out_dir, "train_folds23")
     testD = os.path.join(args.out_dir, "test")
     valD = os.path.join(args.out_dir, "val")
 
