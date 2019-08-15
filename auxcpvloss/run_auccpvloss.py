@@ -326,18 +326,11 @@ def predict(args, config, name, data, checkpoint, test_folder, output_folder):
             logger.info('Skipping prediction for %s. Already exists!', sample)
             continue
 
-        # forking for each prediction to terminate tensorflow server on gpu
-        # TODO: check if there is a nicer, cleaner way
-        child_pid = os.fork()
-        if child_pid == 0:
-            predict_sample(args, config, name, data, sample, checkpoint,
-                           test_folder, output_folder)
-            os._exit(0)
-        else:
-            _, status = os.waitpid(child_pid, 0)
-            exitcode = os.WEXITSTATUS(status)
-            if not os.WIFEXITED(status) or exitcode != 0:
-                raise RuntimeError("prediction failed, check exception in child process")
+        if args.debug_args and idx >= 2:
+            break
+
+        predict_sample(args, config, name, data, sample, checkpoint,
+                       test_folder, output_folder)
 
 
 def get_checkpoint_file(iteration, name, train_folder):
@@ -464,8 +457,8 @@ def label(args, config, data, pred_folder, output_folder):
                                    output_folder, s) for s in samples)
     else:
         for sample in samples:
-            label_sample(args, config, data, sample, pred_folder,
-                         output_folder)
+            label_sample(args, config, data, pred_folder,
+                         output_folder, sample)
 
 
 def evaluate_sample(config, data, sample, inst_folder, output_folder,
