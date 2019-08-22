@@ -4,6 +4,7 @@ from glob import glob
 import fnmatch
 import functools
 import importlib
+import itertools
 import logging
 try:
     import absl.logging
@@ -101,9 +102,9 @@ def get_arguments():
                                  'mknet',
                                  'train',
                                  'predict',
+                                 'label',
                                  'validate_checkpoints',
                                  'validate',
-                                 'label',
                                  'postprocess',
                                  'evaluate',
                                  'visualize'
@@ -203,8 +204,8 @@ def setDebugValuesForConfig(config):
     config['training']['checkpoints'] = 10
     config['training']['snapshots'] = 10
     config['training']['profiling'] = 10
-    # config['training']['num_workers'] = 1
-    # config['training']['cache_size'] = 0
+    config['training']['num_workers'] = 1
+    config['training']['cache_size'] = 1
 
 
 @fork
@@ -234,6 +235,7 @@ def mknet(args, config, train_folder, test_folder):
 def train(args, config, train_folder):
     if 'CUDA_VISIBLE_DEVICES' not in os.environ:
         raise RuntimeError("no free GPU available!")
+
     data_files = get_list_train_files(config)
     if args.run_from_exp:
         train = importlib.import_module(
@@ -303,6 +305,7 @@ def predict_sample(args, config, name, data, sample, checkpoint, input_folder,
         predict = importlib.import_module(
             args.app + '.02_setups.' + args.setup + '.predict')
 
+    logger.info('predicting %s!', sample)
     predict.predict(name=name, sample=sample, checkpoint=checkpoint,
                     data_folder=data, input_folder=input_folder,
                     output_folder=output_folder,
@@ -318,7 +321,7 @@ def predict(args, config, name, data, checkpoint, test_folder, output_folder):
 
     samples = get_list_samples(config, data, config['data']['input_format'])
 
-    for sample in samples:
+    for idx, sample in enumerate(samples):
         if not config['general']['overwrite'] and \
            os.path.exists(os.path.join(
                output_folder,
@@ -328,7 +331,6 @@ def predict(args, config, name, data, checkpoint, test_folder, output_folder):
 
         if args.debug_args and idx >= 2:
             break
-
         predict_sample(args, config, name, data, sample, checkpoint,
                        test_folder, output_folder)
 
@@ -363,13 +365,16 @@ def select_validation_data(config, train_folder, val_folder):
 
 
 @time_func
-def validate_checkpoint(args, config, data, checkpoint, train_folder,
+def validate_checkpoint(args, config, data, checkpoint, params, train_folder,
                         test_folder, output_folder):
-    logger.info("validating checkpoint %d", checkpoint)
+    logger.info("validating checkpoint %d %s", checkpoint, params)
     # create test iteration folders
+    params_str = [str(s).replace(".", "_") for s in params]
     pred_folder = os.path.join(output_folder, 'processed', str(checkpoint))
-    inst_folder = os.path.join(output_folder, 'instanced', str(checkpoint))
-    eval_folder = os.path.join(output_folder, 'evaluated', str(checkpoint))
+    inst_folder = os.path.join(output_folder, 'instanced', str(checkpoint),
+                               *params_str)
+    eval_folder = os.path.join(output_folder, 'evaluated', str(checkpoint),
+                               *params_str)
 
     for out in [pred_folder, inst_folder, eval_folder]:
         os.makedirs(out, exist_ok=True)
@@ -383,15 +388,27 @@ def validate_checkpoint(args, config, data, checkpoint, train_folder,
             checkpoint_file, test_folder, pred_folder)
 
     # label
-    logger.info("labelling checkpoint %d", checkpoint)
-    label(args, config, data, pred_folder, inst_folder)
+    logger.info("labelling checkpoint %d %s", checkpoint, params)
+    label(args, config, data, pred_folder, inst_folder, params)
 
     # evaluate
-    logger.info("evaluating checkpoint %d", checkpoint)
+    logger.info("evaluating checkpoint %d %s", checkpoint, params)
     acc = evaluate(args, config, data, inst_folder, eval_folder)
-    logger.info("AP checkpoint %6d: %.4f", checkpoint, acc)
+    logger.info("%s checkpoint %6d %s: %.4f",
+                config['evaluation']['metric'], checkpoint, params, acc)
 
     return acc
+
+
+def get_postprocessing_validation_params(config):
+    return [config['validation']['num_dilations'],
+            config['validation']['fg_thresh'],
+            config['validation']['seed_thresh']]
+
+def get_postprocessing_params(config):
+    return [config['postprocessing']['watershed']['num_dilations'],
+            config['postprocessing']['watershed']['fg_thresh'],
+            config['postprocessing']['watershed']['seed_thresh']]
 
 
 def validate_checkpoints(args, config, data, checkpoints, train_folder,
@@ -399,26 +416,36 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     # validate all checkpoints and return best one
     accs = []
     ckpts = []
+    param_sets = []
     for checkpoint in checkpoints:
-        acc = validate_checkpoint(args, config, data, checkpoint,
-                                  train_folder, test_folder, output_folder)
-        ckpts.append(checkpoint)
-        accs.append(acc)
+        for param_set in itertools.product(
+                *get_postprocessing_validation_params(config)):
+            acc = validate_checkpoint(args, config, data, checkpoint,
+                                      param_set, train_folder, test_folder,
+                                      output_folder)
+            accs.append(acc)
+            ckpts.append(checkpoint)
+            param_sets.append(param_set)
 
     for ch, acc in zip(checkpoints, accs):
-        logger.info("AP checkpoint %6d: %.4f", ch, acc)
+        logger.info("%s checkpoint %6d: %.4f",
+                    config['evaluation']['metric'], ch, acc)
 
     if config['general']['debug'] and None in accs:
         logger.error("None in checkpoint found: %s (continuing with last)",
                      tuple(accs))
         best_checkpoint = ckpts[-1]
+        best_params = param_sets[-1]
     else:
         best_checkpoint = ckpts[np.argmax(accs)]
+        best_params = param_sets[np.argmax(accs)]
     logger.info('best checkpoint: %d', best_checkpoint)
-    return best_checkpoint
+    logger.info('best params: %d', best_params)
+    return best_checkpoint, best_params
 
 
-def label_sample(args, config, data, pred_folder, output_folder, sample):
+def label_sample(args, config, data, pred_folder, output_folder, params,
+                 sample):
     if args.run_from_exp:
         label = importlib.import_module(
             config['base'].replace("/", ".") + '.label')
@@ -426,11 +453,11 @@ def label_sample(args, config, data, pred_folder, output_folder, sample):
         label = importlib.import_module(
             args.app + '.02_setups.' + args.setup + '.label')
 
-    # TODO: logging doesn't work in parallel case
+    output_fn = os.path.join(
+        output_folder, sample + '.' + \
+        config['postprocessing']['watershed']['output_format'])
     if not config['general']['overwrite'] and \
-       os.path.exists(os.path.join(
-           output_folder,
-           sample + '.' + config['postprocessing']['watershed']['output_format'])):
+       os.path.exists(output_fn):
         logger.info('Skipping labelling for %s. Already exists!', sample)
         return
 
@@ -440,25 +467,29 @@ def label_sample(args, config, data, pred_folder, output_folder, sample):
         gt = None
     label.label(sample=sample, gt=gt, pred_folder=pred_folder,
                 output_folder=output_folder,
+                output_fn=output_fn,
                 pred_format=config['prediction']['output_format'],
                 gt_format=config['data']['input_format'],
                 gt_key=config['data']['gt_key'],
-                **config['postprocessing']['watershed'])
+                **config['postprocessing'],
+                num_dilations=params[0],
+                fg_thresh=params[1],
+                seed_thresh=params[2])
 
 
 @time_func
-def label(args, config, data, pred_folder, output_folder):
+def label(args, config, data, pred_folder, output_folder, params):
     samples = get_list_samples(config, pred_folder,
                                config['prediction']['output_format'])
     num_workers = config['postprocessing']['watershed'].get("num_workers", 1)
     if num_workers > 1:
         Parallel(n_jobs=num_workers, backend='multiprocessing', verbose=1) \
             (delayed(label_sample)(args, config, data, pred_folder,
-                                   output_folder, s) for s in samples)
+                                   output_folder, params, s) for s in samples)
     else:
         for sample in samples:
             label_sample(args, config, data, pred_folder,
-                         output_folder, sample)
+                         output_folder, params, sample)
 
 
 def evaluate_sample(config, data, sample, inst_folder, output_folder,
@@ -484,7 +515,6 @@ def evaluate(args, config, data, inst_folder, output_folder):
     file_format = config['postprocessing']['watershed']['output_format']
     samples = get_list_samples(config, inst_folder, file_format)
 
-    # TODO: sorry, need to add zarr to evaluation script
     num_workers = config['evaluation'].get("num_workers", 1)
     if num_workers > 1:
         metric_dicts = Parallel(n_jobs=num_workers, backend='multiprocessing',
@@ -507,7 +537,8 @@ def evaluate(args, config, data, inst_folder, output_folder):
             continue
         for k in config['evaluation']['metric'].split('/'):
             metric_dict = metric_dict[k]
-        logger.info("AP sample %-19s: %.4f", sample, metric_dict)
+        logger.info("%s sample %-19s: %.4f",
+                    config['evaluation']['metric'], sample, metric_dict)
         accs.append(metric_dict)
 
     return np.mean(accs)
@@ -527,9 +558,9 @@ def main():
     # get experiment name
     if args.setup is not None:
         if args.expid is not None:
-            expname = args.setup + '_' + args.expid
+            expname = args.app + '_' + args.setup + '_' + args.expid
         else:
-            expname = args.setup + '_' + datetime.now().strftime('%y%m%d_%H%M%S')
+            expname = args.app + '_' + args.setup + '_' + datetime.now().strftime('%y%m%d_%H%M%S')
 
     # create folder structure for experiment
     base, train_folder, val_folder, test_folder = create_folders(args, expname)
@@ -623,20 +654,28 @@ def main():
         checkpoints = get_checkpoint_list(config['model']['train_net_name'],
                                           train_folder)
         logger.info("validating all checkpoints")
-        checkpoint = validate_checkpoints(args, config, data, checkpoints,
-                                          train_folder, test_folder,
-                                          output_folder)
+        checkpoint, params = validate_checkpoints(args, config, data,
+                                                  checkpoints,
+                                                  train_folder, test_folder,
+                                                  output_folder)
+        params_str = [str(s).replace(".", "_") for s in params]
     # validate single checkpoint
-    elif 'validate' in args.do:
-        data, output_folder = select_validation_data(config, train_folder,
-                                                     val_folder)
-        _ = validate_checkpoint(args, config, data, checkpoint, train_folder,
-                                test_folder, output_folder)
+    else:
+        params = get_postprocessing_params(config)
+        params_str = [str(s).replace(".", "_") for s in params]
+        if checkpoint is None:
+            raise RuntimeError("checkpoint must be set but is None")
+        if 'validate' in args.do:
+            data, output_folder = select_validation_data(config, train_folder,
+                                                         val_folder)
+            _ = validate_checkpoint(args, config, data, checkpoint, params,
+                                    train_folder, test_folder, output_folder)
 
-    if checkpoint is not None:
-        pred_folder = os.path.join(test_folder, 'processed', str(checkpoint))
-        inst_folder = os.path.join(test_folder, 'instanced', str(checkpoint))
-        eval_folder = os.path.join(test_folder, 'evaluated', str(checkpoint))
+    pred_folder = os.path.join(test_folder, 'processed', str(checkpoint))
+    inst_folder = os.path.join(test_folder, 'instanced', str(checkpoint),
+                               *params_str)
+    eval_folder = os.path.join(test_folder, 'evaluated', str(checkpoint),
+                               *params_str)
 
     # predict test set
     if 'all' in args.do or 'predict' in args.do:
@@ -655,7 +694,7 @@ def main():
         os.makedirs(inst_folder, exist_ok=True)
         logger.info("labelling checkpoint %d", checkpoint)
         label(args, config, config['data']['test_data'], pred_folder,
-              inst_folder)
+              inst_folder, params)
 
     if 'all' in args.do or 'postprocess' in args.do:
         print('postprocess')
@@ -665,7 +704,8 @@ def main():
         logger.info("evaluating checkpoint %d", checkpoint)
         acc = evaluate(args, config, config['data']['test_data'], inst_folder,
                        eval_folder)
-        logger.info("AP TEST checkpoint %d: %.4f", checkpoint, acc)
+        logger.info("%s TEST checkpoint %d %s: %.4f",
+                    config['evaluation']['metric'], checkpoint, params, acc)
 
     if 'all' in args.do or 'visualize' in args.do:
         visualize()

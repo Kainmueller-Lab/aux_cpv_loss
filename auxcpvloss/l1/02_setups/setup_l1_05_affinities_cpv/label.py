@@ -52,17 +52,15 @@ def label(**kwargs):
         input_file = h5py.File(sample, 'r')
     else:
         raise NotImplementedError("invalid pred format")
-    surf = np.array(input_file[kwargs['surf_key']])
-    fgbg = np.array(input_file[kwargs['fgbg_key']])
-    raw = np.array(input_file[kwargs['raw_key']])
+    surf = np.array(input_file[kwargs['watershed']['surf_key']])
+    fgbg = np.array(input_file[kwargs['watershed']['fgbg_key']])
+    raw = np.array(input_file[kwargs['watershed']['raw_key']])
 
     if kwargs['pred_format'] == "hdf":
         input_file.close()
 
-    if kwargs['output_format'] == "hdf":
-        output_file = h5py.File(
-            os.path.join(kwargs['output_folder'],
-                         kwargs['sample'] + "."+kwargs['output_format']), 'w')
+    if kwargs['watershed']['output_format'] == "hdf":
+        output_file = h5py.File(kwargs['output_fn'], 'w')
     else:
         raise NotImplementedError("invalid output format")
 
@@ -119,7 +117,7 @@ def label(**kwargs):
     watershed(kwargs['sample'], surf_scalar, markers, fg, output_file,
               its=kwargs['num_dilations'])
 
-    if kwargs['output_format'] == "hdf":
+    if kwargs['watershed']['output_format'] == "hdf":
         output_file.close()
 
 

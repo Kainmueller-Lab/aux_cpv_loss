@@ -80,15 +80,15 @@ def downsample(fmaps_in, factors, name='down', padding='valid'):
     return fmaps
 
 
-# def repeat(
-#         fmaps_in,
-#         multiples):
+def repeat(
+        fmaps_in,
+        multiples):
 
-#     expanded = tf.expand_dims(fmaps_in, -1)
-#     tiled = tf.tile(expanded, multiples=(1,) + multiples)
-#     repeated = tf.reshape(tiled, tf.shape(fmaps_in) * multiples)
+    expanded = tf.expand_dims(fmaps_in, -1)
+    tiled = tf.tile(expanded, multiples=(1,) + multiples)
+    repeated = tf.reshape(tiled, tf.shape(fmaps_in) * multiples)
 
-#     return repeated
+    return repeated
 
 def upsample(fmaps_in, factors, num_fmaps, activation='relu', name='up',
              padding='valid',
@@ -98,55 +98,61 @@ def upsample(fmaps_in, factors, num_fmaps, activation='relu', name='up',
         activation = getattr(tf.nn, activation)
 
     if upsampling == "resize_conv":
-        conv_layer = getattr(
-            tf.layers,
-            {2: 'conv2d', 3: 'conv3d'}[fmaps_in.get_shape().ndims - 2])
+        # conv_layer = getattr(
+        #     tf.layers,
+        #     {2: 'conv2d', 3: 'conv3d'}[fmaps_in.get_shape().ndims - 2])
 
-        fmaps_in = tf.keras.backend.resize_volumes(
-            fmaps_in,
-            factors[0],
-            factors[1],
-            factors[2],
-            "channels_first")
-
-        # in_shape = tuple(fmaps_in.get_shape().as_list())
-        # num_fmaps_in = in_shape[1]
-        # num_fmaps_out = num_fmaps
-        # out_shape = (
-        #     in_shape[0],
-        #     num_fmaps_out) + tuple(s*f for s, f in zip(in_shape[2:], factors))
-
-        # # (num_fmaps_out * num_fmaps_in)
-        # kernel_variables = tf.get_variable(
-        #     name + '_kernel_variables',
-        #     (num_fmaps_out * num_fmaps_in,),
-        #     dtype=tf.float32)
-        # # (1, 1, 1, num_fmaps_out, num_fmaps_in)
-        # kernel_variables = tf.reshape(
-        #     kernel_variables,
-        #     (1, 1, 1) + (num_fmaps_out, num_fmaps_in))
-        # # (f_z, f_y_ f_x, num_fmaps_out, num_fmaps_in)
-        # constant_upsample_filter = repeat(
-        #     kernel_variables,
-        #     tuple(factors) + (1, 1))
-
-        # fmaps = tf.nn.conv3d_transpose(
+        # fmaps_in = tf.keras.backend.resize_volumes(
         #     fmaps_in,
-        #     filter=constant_upsample_filter,
-        #     output_shape=out_shape,
-        #     strides=(1, 1) + tuple(factors),
-        #     padding='VALID',
-        #     data_format='NCDHW',
+        #     factors[0],
+        #     factors[1],
+        #     factors[2],
+        #     "channels_first")
+
+        # fmaps = conv_layer(
+        #     inputs=fmaps_in,
+        #     filters=num_fmaps,
+        #     kernel_size=factors,
+        #     padding=padding,
+        #     data_format='channels_first',
+        #     activation=activation,
         #     name=name)
 
-        fmaps = conv_layer(
-            inputs=fmaps_in,
-            filters=num_fmaps,
-            kernel_size=factors,
-            padding=padding,
-            data_format='channels_first',
-            activation=activation,
+        conv_trans_layer = getattr(
+            tf.nn,
+            {2: 'conv2d_transpose', 3: 'conv3d_transpose'}[
+                fmaps_in.get_shape().ndims - 2])
+
+        in_shape = tuple(fmaps_in.get_shape().as_list())
+        num_fmaps_in = in_shape[1]
+        num_fmaps_out = num_fmaps
+        out_shape = (
+            in_shape[0],
+            num_fmaps_out) + tuple(s*f for s, f in zip(in_shape[2:], factors))
+
+        # (num_fmaps_out * num_fmaps_in)
+        kernel_variables = tf.get_variable(
+            name + '_kernel_variables',
+            (num_fmaps_out * num_fmaps_in,),
+            dtype=tf.float32)
+        # (1, 1, 1, num_fmaps_out, num_fmaps_in)
+        kernel_variables = tf.reshape(
+            kernel_variables,
+            (1, 1, 1) + (num_fmaps_out, num_fmaps_in))
+        # (f_z, f_y_ f_x, num_fmaps_out, num_fmaps_in)
+        constant_upsample_filter = repeat(
+            kernel_variables,
+            tuple(factors) + (1, 1))
+
+        fmaps = conv_trans_layer(
+            fmaps_in,
+            filter=constant_upsample_filter,
+            output_shape=out_shape,
+            strides=(1, 1) + tuple(factors),
+            padding='VALID',
+            data_format='NCDHW',
             name=name)
+
     elif upsampling == "trans_conv":
         conv_trans_layer = getattr(
             tf.layers,

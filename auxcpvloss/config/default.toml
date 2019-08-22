@@ -75,7 +75,7 @@ fold = '3'
 [evaluation]
 metric = 'confusion_matrix/th_0_5/fscore'
 res_key = 'volumes/watershed_seg_fg_dilated'
-num_workers = 8
+num_workers = 20
 
 [preprocessing]
 
