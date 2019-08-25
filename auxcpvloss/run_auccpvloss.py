@@ -454,8 +454,8 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
             params.append(param_sets[idx])
             results.append({'checkpoint': checkpoint,
                             'accuracy': acc,
-                            'params': param_set[idx]})
-    #
+                            'params': param_sets[idx]})
+
     # for checkpoint in checkpoints:
     #     for param_set in param_sets:
     #         acc = validate_checkpoint(args, config, data, checkpoint,
@@ -464,10 +464,13 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     #         accs.append(acc)
     #         ckpts.append(checkpoint)
     #         params.append(param_set)
+    #         results.append({'checkpoint': checkpoint,
+    #                         'accuracy': acc,
+    #                         'params': param_set})
 
-    for ch, acc in zip(checkpoints, accs):
-        logger.info("%s checkpoint %6d: %.4f",
-                    config['evaluation']['metric'], ch, acc)
+    for ch, acc, p in zip(ckpts, accs, params):
+        logger.info("%s checkpoint %6d: %.4f (%s)",
+                    config['evaluation']['metric'], ch, acc, p)
 
     if config['general']['debug'] and None in accs:
         logger.error("None in checkpoint found: %s (continuing with last)",
@@ -478,7 +481,7 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
         best_checkpoint = ckpts[np.argmax(accs)]
         best_params = params[np.argmax(accs)]
     logger.info('best checkpoint: %d', best_checkpoint)
-    logger.info('best params: %d', best_params)
+    logger.info('best params: %s', best_params)
     with open(os.path.join(output_folder, "results.json"), 'w') as f:
         json.dump(results, f)
     return best_checkpoint, best_params
@@ -600,7 +603,7 @@ def main():
         else:
             base = os.path.join(args.root, args.expid)
     else:
-        base = os.path.join(arg.root,
+        base = os.path.join(args.root,
                             args.app + '_' + args.setup + '_' + \
                             datetime.now().strftime('%y%m%d_%H%M%S'))
     os.makedirs(base, exist_ok=True)
@@ -659,12 +662,14 @@ def main():
                 entries[tuple(entry)] = r['accuracy']
             model_results.append(entries)
         results = pd.DataFrame(model_results)
-        print(results.mean())
+        logger.info("Results:\n %s\n", results.transpose())
+        logger.info("Results (mean):\n %s\n", results.mean())
         mean_results = dict(results.mean())
         best_params = max(mean_results, key=mean_results.get)
-        print(best_params)
+
         config['training']['max_iterations'] = best_params[0] + 10
-        for idx, p in enumerate(sorted(r['params'].keys())):
+        for idx, p in enumerate(['checkpoint'] + sorted(r['params'].keys())):
+            logger.info("Best parameters: %s = %s", p, best_params[idx])
             config['postprocessing'][p] = best_params[idx]
         assert config['training'].get('folds') is None, \
             'folds should not be set in training for final model'
@@ -674,7 +679,6 @@ def main():
             'no validation data for final model'
         assert 'all' not in args.do, \
             'no validation for final model, specify tasks explicitly'
-        return
 
     # backup and copy config
     backup_and_copy_file(None, base, 'config.toml')
