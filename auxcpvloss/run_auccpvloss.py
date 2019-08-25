@@ -88,14 +88,13 @@ def get_arguments():
     parser.add_argument('-c', '--config', action='append',
                         help=('Configuration files to use. For defaults, '
                               'see `config/default.toml`.'))
-    parser.add_argument('-a', '--app', dest='app', required=True,
+    parser.add_argument('-a', '--app', dest='app',
                         help=('Application to use. Choose out of cityscapes, '
                               'flylight, kaggle, etc.'))
     parser.add_argument('-r', '--root', dest='root', default=None,
-                        help='Experiment folder to store results.',
-                        required=True)
+                        help='Experiment folder to store results.')
     parser.add_argument('-s', '--setup', dest='setup', default=None,
-                        help='Setup for experiment.', required=True)
+                        help='Setup for experiment.')
     parser.add_argument('-id', '--exp-id', dest='expid', default=None,
                         help='ID for experiment.')
 
@@ -153,11 +152,7 @@ def get_arguments():
     return args
 
 
-def create_folders(args, expname):
-    # create experiment folder
-    filebase = os.path.join(args.root, expname)
-    os.makedirs(filebase, exist_ok=True)
-
+def create_folders(args, filebase):
     if args.expid is None and args.run_from_exp:
         setup = os.path.join(args.app, '02_setups', args.setup)
         backup_and_copy_file(setup, filebase, 'train.py')
@@ -182,7 +177,7 @@ def create_folders(args, expname):
     os.makedirs(os.path.join(test_folder, 'processed'), exist_ok=True)
     os.makedirs(os.path.join(test_folder, 'instanced'), exist_ok=True)
 
-    return filebase, train_folder, val_folder, test_folder
+    return train_folder, val_folder, test_folder
 
 
 def update_config(args, config):
@@ -598,15 +593,19 @@ def main():
     if not args.do:
         raise ValueError("Provide a task to do (-d/--do)")
 
-    # get experiment name
-    if args.setup is not None:
-        if args.expid is not None:
-            expname = args.expid
+    # get experiment name and create folder
+    if args.expid is not None:
+        if os.path.isdir(args.expid):
+            base = args.expid
         else:
-            expname = args.app + '_' + args.setup + '_' + datetime.now().strftime('%y%m%d_%H%M%S')
-
+            base = os.path.join(args.root, args.expid)
+    else:
+        base = os.path.join(arg.root,
+                            args.app + '_' + args.setup + '_' + \
+                            datetime.now().strftime('%y%m%d_%H%M%S'))
+    os.makedirs(base, exist_ok=True)
     # create folder structure for experiment
-    base, train_folder, val_folder, test_folder = create_folders(args, expname)
+    train_folder, val_folder, test_folder = create_folders(args, base)
 
     # read config file
     if args.config is None and args.expid is None:
