@@ -52,14 +52,14 @@ def label(**kwargs):
         input_file = h5py.File(sample, 'r')
     else:
         raise NotImplementedError("invalid pred format")
-    surf = np.array(input_file[kwargs['watershed']['surf_key']])
-    fgbg = np.array(input_file[kwargs['watershed']['fgbg_key']])
-    raw = np.array(input_file[kwargs['watershed']['raw_key']])
+    surf = np.array(input_file[kwargs['surf_key']])
+    fgbg = np.array(input_file[kwargs['fgbg_key']])
+    raw = np.array(input_file[kwargs['raw_key']])
 
     if kwargs['pred_format'] == "hdf":
         input_file.close()
 
-    if kwargs['watershed']['output_format'] == "hdf":
+    if kwargs['output_format'] == "hdf":
         output_file = h5py.File(kwargs['output_fn'], 'w')
     else:
         raise NotImplementedError("invalid output format")
@@ -117,28 +117,5 @@ def label(**kwargs):
     watershed(kwargs['sample'], surf_scalar, markers, fg, output_file,
               its=kwargs['num_dilations'])
 
-    if kwargs['watershed']['output_format'] == "hdf":
+    if kwargs['output_format'] == "hdf":
         output_file.close()
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-s', '--sample', required=True)
-    parser.add_argument('--pred_folder', required=True)
-    parser.add_argument('--pred_format', default='zarr')
-    parser.add_argument('--surf_key', default='volumes/pred_affs')
-    parser.add_argument('--fgbg_key', default='volumes/pred_fgbg')
-    parser.add_argument('--raw_key', default='volumes/raw_cropped')
-    parser.add_argument('--gt')
-    parser.add_argument('--gt_key', default='volumes/gt_labels')
-    parser.add_argument('--gt_format', default='hdf')
-    parser.add_argument('-o', '--output_folder', required=True)
-    parser.add_argument('--output_format', default='hdf')
-    parser.add_argument('-d', '--num_dilations', default=1, type=int)
-    parser.add_argument('--fg_thresh', default=0.95, type=float)
-    parser.add_argument('--surf_thresh', default=0.98, type=float)
-    args = parser.parse_args()
-    label(**vars(args))
-
-if __name__ == "__main__":
-    main()

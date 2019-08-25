@@ -5,6 +5,7 @@ import fnmatch
 import functools
 import importlib
 import itertools
+import json
 import logging
 try:
     import absl.logging
@@ -20,7 +21,9 @@ import time
 
 import h5py
 from joblib import Parallel, delayed
+from natsort import natsorted
 import numpy as np
+import pandas as pd
 import toml
 
 from auxcpvloss import util
@@ -140,6 +143,10 @@ def get_arguments():
     parser.add_argument("--debug_args", action="store_true",
                         help=('Set some low values to certain'
                               ' args for debugging.'))
+
+    parser.add_argument('-m', '--trained_model', action='append',
+                        help=('Models to average and find best params'
+                              'train on whole train set using those params'))
 
     args = parser.parse_args()
 
@@ -274,9 +281,10 @@ def get_list_train_files(config):
 
 def get_list_samples(config, data, file_format):
 
+    logger.info("reading data from %s", data)
     # read data
     if os.path.isfile(data):
-        if file_format == ".hdf":
+        if file_format == ".hdf" or file_format == "hdf":
             with h5py.File(data, 'r') as f:
                 samples = [k for k in f]
         else:
@@ -340,8 +348,8 @@ def get_checkpoint_file(iteration, name, train_folder):
 
 
 def get_checkpoint_list(name, train_folder):
-    checkpoints = glob(
-        os.path.join(train_folder, name + '_checkpoint_*.index'))
+    checkpoints = natsorted(glob(
+        os.path.join(train_folder, name + '_checkpoint_*.index')))
     return [int(os.path.splitext(os.path.basename(cp))[0].split("_")[-1])
             for cp in checkpoints]
 
@@ -369,16 +377,8 @@ def validate_checkpoint(args, config, data, checkpoint, params, train_folder,
                         test_folder, output_folder):
     logger.info("validating checkpoint %d %s", checkpoint, params)
     # create test iteration folders
-    params_str = [str(s).replace(".", "_") for s in params]
     pred_folder = os.path.join(output_folder, 'processed', str(checkpoint))
-    inst_folder = os.path.join(output_folder, 'instanced', str(checkpoint),
-                               *params_str)
-    eval_folder = os.path.join(output_folder, 'evaluated', str(checkpoint),
-                               *params_str)
-
-    for out in [pred_folder, inst_folder, eval_folder]:
-        os.makedirs(out, exist_ok=True)
-
+    os.makedirs(pred_folder, exist_ok=True)
     # predict val data
     checkpoint_file = get_checkpoint_file(checkpoint,
                                           config['model']['train_net_name'],
@@ -387,6 +387,18 @@ def validate_checkpoint(args, config, data, checkpoint, params, train_folder,
     predict(args, config, config['model']['test_net_name'], data,
             checkpoint_file, test_folder, pred_folder)
 
+    if not params:
+        return
+
+    params_str = [k + "_" + str(v).replace(".", "_")
+                  for k, v in params.items()]
+    inst_folder = os.path.join(output_folder, 'instanced', str(checkpoint),
+                               *params_str)
+    eval_folder = os.path.join(output_folder, 'evaluated', str(checkpoint),
+                               *params_str)
+    os.makedirs(inst_folder, exist_ok=True)
+    os.makedirs(eval_folder, exist_ok=True)
+
     # label
     logger.info("labelling checkpoint %d %s", checkpoint, params)
     label(args, config, data, pred_folder, inst_folder, params)
@@ -394,21 +406,26 @@ def validate_checkpoint(args, config, data, checkpoint, params, train_folder,
     # evaluate
     logger.info("evaluating checkpoint %d %s", checkpoint, params)
     acc = evaluate(args, config, data, inst_folder, eval_folder)
-    logger.info("%s checkpoint %6d %s: %.4f",
-                config['evaluation']['metric'], checkpoint, params, acc)
+    logger.info("%s checkpoint %6d: %.4f (%s)",
+                config['evaluation']['metric'], checkpoint, acc, params)
 
     return acc
 
 
-def get_postprocessing_validation_params(config):
-    return [config['validation']['num_dilations'],
-            config['validation']['fg_thresh'],
-            config['validation']['seed_thresh']]
+def get_postprocessing_params(config, params_list):
+    params = {}
+    for p in params_list:
+        params[p] = config[p]
+    return params
 
-def get_postprocessing_params(config):
-    return [config['postprocessing']['watershed']['num_dilations'],
-            config['postprocessing']['watershed']['fg_thresh'],
-            config['postprocessing']['watershed']['seed_thresh']]
+def named_product(**items):
+    if items:
+        names = items.keys()
+        vals = items.values()
+        for res in itertools.product(*vals):
+            yield dict(zip(names, res))
+    else:
+        yield {}
 
 
 def validate_checkpoints(args, config, data, checkpoints, train_folder,
@@ -416,16 +433,42 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     # validate all checkpoints and return best one
     accs = []
     ckpts = []
-    param_sets = []
+    params = []
+    results = []
+    param_sets = list(named_product(
+        **get_postprocessing_params(
+            config['validation'],
+            config['postprocessing'].get('params'))))
+
+    # only predict (params=None)
     for checkpoint in checkpoints:
-        for param_set in itertools.product(
-                *get_postprocessing_validation_params(config)):
-            acc = validate_checkpoint(args, config, data, checkpoint,
-                                      param_set, train_folder, test_folder,
-                                      output_folder)
+        validate_checkpoint(args, config, data, checkpoint, None,
+                            train_folder, test_folder, output_folder)
+
+    # label and eval
+    for checkpoint in checkpoints:
+        num_workers = config['validation'].get("num_workers", 1)
+        res = Parallel(n_jobs=num_workers, backend='multiprocessing') \
+            (delayed(validate_checkpoint)(
+                args, config, data, checkpoint, p, train_folder, test_folder,
+                output_folder)
+             for p in param_sets)
+        for idx, acc in enumerate(res):
             accs.append(acc)
             ckpts.append(checkpoint)
-            param_sets.append(param_set)
+            params.append(param_sets[idx])
+            results.append({'checkpoint': checkpoint,
+                            'accuracy': acc,
+                            'params': param_set[idx]})
+    #
+    # for checkpoint in checkpoints:
+    #     for param_set in param_sets:
+    #         acc = validate_checkpoint(args, config, data, checkpoint,
+    #                                   param_set, train_folder, test_folder,
+    #                                   output_folder)
+    #         accs.append(acc)
+    #         ckpts.append(checkpoint)
+    #         params.append(param_set)
 
     for ch, acc in zip(checkpoints, accs):
         logger.info("%s checkpoint %6d: %.4f",
@@ -435,12 +478,14 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
         logger.error("None in checkpoint found: %s (continuing with last)",
                      tuple(accs))
         best_checkpoint = ckpts[-1]
-        best_params = param_sets[-1]
+        best_params = params[-1]
     else:
         best_checkpoint = ckpts[np.argmax(accs)]
-        best_params = param_sets[np.argmax(accs)]
+        best_params = params[np.argmax(accs)]
     logger.info('best checkpoint: %d', best_checkpoint)
     logger.info('best params: %d', best_params)
+    with open(os.path.join(output_folder, "results.json"), 'w') as f:
+        json.dump(results, f)
     return best_checkpoint, best_params
 
 
@@ -455,33 +500,32 @@ def label_sample(args, config, data, pred_folder, output_folder, params,
 
     output_fn = os.path.join(
         output_folder, sample + '.' + \
-        config['postprocessing']['watershed']['output_format'])
+        config['postprocessing']['output_format'])
     if not config['general']['overwrite'] and \
        os.path.exists(output_fn):
         logger.info('Skipping labelling for %s. Already exists!', sample)
         return
 
-    if config['postprocessing']['watershed']['include_gt']:
+    if config['postprocessing']['include_gt']:
         gt = os.path.join(data, sample + "." + config['data']['input_format'])
     else:
         gt = None
+
+    config['postprocessing'] = merge_dicts(config['postprocessing'], params)
     label.label(sample=sample, gt=gt, pred_folder=pred_folder,
                 output_folder=output_folder,
                 output_fn=output_fn,
                 pred_format=config['prediction']['output_format'],
                 gt_format=config['data']['input_format'],
                 gt_key=config['data']['gt_key'],
-                **config['postprocessing'],
-                num_dilations=params[0],
-                fg_thresh=params[1],
-                seed_thresh=params[2])
+                **config['postprocessing'])
 
 
 @time_func
 def label(args, config, data, pred_folder, output_folder, params):
     samples = get_list_samples(config, pred_folder,
                                config['prediction']['output_format'])
-    num_workers = config['postprocessing']['watershed'].get("num_workers", 1)
+    num_workers = config['postprocessing'].get("num_workers", 1)
     if num_workers > 1:
         Parallel(n_jobs=num_workers, backend='multiprocessing', verbose=1) \
             (delayed(label_sample)(args, config, data, pred_folder,
@@ -506,14 +550,15 @@ def evaluate_sample(config, data, sample, inst_folder, output_folder,
     return evaluate_file(sample_path, gt_path,
                          res_key=config['evaluation']['res_key'],
                          gt_key=gt_key,
+                         foreground_only=config['evaluation']['res_key'],
                          out_dir=output_folder, suffix="",
                          debug=config['general']['debug'])
 
 
 @time_func
 def evaluate(args, config, data, inst_folder, output_folder):
-    file_format = config['postprocessing']['watershed']['output_format']
-    samples = get_list_samples(config, inst_folder, file_format)
+    file_format = config['postprocessing']['output_format']
+    samples = natsorted(get_list_samples(config, inst_folder, file_format))
 
     num_workers = config['evaluation'].get("num_workers", 1)
     if num_workers > 1:
@@ -527,8 +572,6 @@ def evaluate(args, config, data, inst_folder, output_folder):
         for sample in samples:
             metric_dict = evaluate_sample(config, data, sample, inst_folder,
                                           output_folder, file_format)
-            if metric_dict is None:
-                continue
             metric_dicts.append(metric_dict)
 
     accs = []
@@ -558,7 +601,7 @@ def main():
     # get experiment name
     if args.setup is not None:
         if args.expid is not None:
-            expname = args.app + '_' + args.setup + '_' + args.expid
+            expname = args.expid
         else:
             expname = args.app + '_' + args.setup + '_' + datetime.now().strftime('%y%m%d_%H%M%S')
 
@@ -603,6 +646,38 @@ def main():
 
     # update config with command line values
     update_config(args, config)
+
+    if args.trained_model:
+        model_results = []
+        for model in args.trained_model:
+            with open(os.path.join(model, 'val', "results.json"), 'r') as f:
+                results = json.load(f)
+            entries = {}
+            for r in results:
+                entry = [r['checkpoint']]
+                for p in sorted(r['params'].keys()):
+                    entry.append(r['params'][p])
+                entries[tuple(entry)] = r['accuracy']
+            model_results.append(entries)
+        results = pd.DataFrame(model_results)
+        print(results.mean())
+        mean_results = dict(results.mean())
+        best_params = max(mean_results, key=mean_results.get)
+        print(best_params)
+        config['training']['max_iterations'] = best_params[0] + 10
+        for idx, p in enumerate(sorted(r['params'].keys())):
+            config['postprocessing'][p] = best_params[idx]
+        assert config['training'].get('folds') is None, \
+            'folds should not be set in training for final model'
+        assert 'validate' not in args.do, \
+            'no validation data for final model'
+        assert 'validate_checkpoints' not in args.do, \
+            'no validation data for final model'
+        assert 'all' not in args.do, \
+            'no validation for final model, specify tasks explicitly'
+        return
+
+    # backup and copy config
     backup_and_copy_file(None, base, 'config.toml')
     with open(os.path.join(base, "config.toml"), 'w') as f:
         toml.dump(config, f)
@@ -658,11 +733,11 @@ def main():
                                                   checkpoints,
                                                   train_folder, test_folder,
                                                   output_folder)
-        params_str = [str(s).replace(".", "_") for s in params]
     # validate single checkpoint
     else:
-        params = get_postprocessing_params(config)
-        params_str = [str(s).replace(".", "_") for s in params]
+        params = get_postprocessing_params(
+            config['postprocessing'],
+            config['postprocessing'].get('params'))
         if checkpoint is None:
             raise RuntimeError("checkpoint must be set but is None")
         if 'validate' in args.do:
@@ -671,6 +746,8 @@ def main():
             _ = validate_checkpoint(args, config, data, checkpoint, params,
                                     train_folder, test_folder, output_folder)
 
+    params_str = [k + "_" + str(v).replace(".", "_")
+                      for k, v in params.items()]
     pred_folder = os.path.join(test_folder, 'processed', str(checkpoint))
     inst_folder = os.path.join(test_folder, 'instanced', str(checkpoint),
                                *params_str)
@@ -704,8 +781,8 @@ def main():
         logger.info("evaluating checkpoint %d", checkpoint)
         acc = evaluate(args, config, config['data']['test_data'], inst_folder,
                        eval_folder)
-        logger.info("%s TEST checkpoint %d %s: %.4f",
-                    config['evaluation']['metric'], checkpoint, params, acc)
+        logger.info("%s TEST checkpoint %d: %.4f (%s)",
+                    config['evaluation']['metric'], checkpoint, acc, params)
 
     if 'all' in args.do or 'visualize' in args.do:
         visualize()
