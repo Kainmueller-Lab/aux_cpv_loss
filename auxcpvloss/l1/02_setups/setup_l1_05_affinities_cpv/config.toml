@@ -18,8 +18,7 @@ num_workers = 8
 [preprocessing]
 
 [postprocessing]
-
-[postprocessing.watershed]
+params = [ "num_dilations", "fg_thresh", "seed_thresh",]
 num_dilations = 1
 fg_thresh = 0.95
 seed_thresh = 0.98
