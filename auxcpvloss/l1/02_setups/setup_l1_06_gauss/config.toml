@@ -11,6 +11,8 @@ gauss_thresh = [0.5, 0.8, 0.95, 0.99]
 [evaluation]
 distance_limit = 3
 metric = 'gt_pred/AP'
+do_detection = true
+sparse = true
 
 [preprocessing]
 

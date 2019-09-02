@@ -27,7 +27,8 @@ import pandas as pd
 import toml
 
 from auxcpvloss import util
-from evaluateInstanceSegmentation import evaluate_file
+import evaluateInstanceSegmentation as eval_seg
+import evaluateInstanceSegmentation as eval_det
 
 
 def merge_dicts(sink, source):
@@ -541,7 +542,7 @@ def label(args, config, data, pred_folder, output_folder, params):
                          output_folder, params, sample)
 
 
-def evaluate_sample(args,config, data, sample, inst_folder, output_folder,
+def evaluate_sample(config, data, sample, inst_folder, output_folder,
                     file_format):
     if os.path.isfile(data):
         gt_path = data
@@ -553,16 +554,10 @@ def evaluate_sample(args,config, data, sample, inst_folder, output_folder,
 
     sample_path = os.path.join(inst_folder, sample + "." + file_format)
 
-    if "gauss" in args.setup:
-        if args.run_from_exp:
-            evaluate = importlib.import_module(
-                config['base'].replace("/", ".") + '.evaluate')
-        else:
-            evaluate = importlib.import_module(
-                args.app + '.02_setups.' + args.setup + '.evaluate')
-        eval_fn = evaluate.evaluate_file
+    if config['evaluation'].get("do_detection", False):
+        eval_fn = eval_det.evaluate_file
     else:
-        eval_fn = evaluate_file
+        eval_fn = eval_seg.evaluate_file
     return eval_fn(res_file=sample_path, gt_file=gt_path,
                    gt_key=gt_key,
                    out_dir=output_folder, suffix="",
@@ -579,13 +574,13 @@ def evaluate(args, config, data, inst_folder, output_folder):
     if num_workers > 1:
         metric_dicts = Parallel(n_jobs=num_workers, backend='multiprocessing',
                                 verbose=0) \
-            (delayed(evaluate_sample)(args, config, data, s, inst_folder,
+            (delayed(evaluate_sample)(config, data, s, inst_folder,
                                       output_folder, file_format)
              for s in samples)
     else:
         metric_dicts = []
         for sample in samples:
-            metric_dict = evaluate_sample(args, config, data, sample,
+            metric_dict = evaluate_sample(config, data, sample,
                                           inst_folder, output_folder,
                                           file_format)
             metric_dicts.append(metric_dict)
