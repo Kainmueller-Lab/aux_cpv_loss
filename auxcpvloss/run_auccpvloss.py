@@ -142,6 +142,9 @@ def get_arguments():
     parser.add_argument("--debug_args", action="store_true",
                         help=('Set some low values to certain'
                               ' args for debugging.'))
+    parser.add_argument("--term_after_predict", action="store_true",
+                        help=('terminate after prediction'
+                              '(to split job into gpu/non-gpu part)'))
 
     parser.add_argument('-m', '--trained_model', action='append',
                         help=('Models to average and find best params'
@@ -440,6 +443,9 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
         validate_checkpoint(args, config, data, checkpoint, None,
                             train_folder, test_folder, output_folder)
 
+    if args.term_after_predict:
+        exit(0)
+
     # label and eval
     for checkpoint in checkpoints:
         num_workers = config['validation'].get("num_workers", 1)
@@ -516,6 +522,7 @@ def label_sample(args, config, data, pred_folder, output_folder, params,
                 pred_format=config['prediction']['output_format'],
                 gt_format=config['data']['input_format'],
                 gt_key=config['data']['gt_key'],
+                debug=config['general']['debug'],
                 **config['postprocessing'])
 
 
@@ -534,7 +541,7 @@ def label(args, config, data, pred_folder, output_folder, params):
                          output_folder, params, sample)
 
 
-def evaluate_sample(config, data, sample, inst_folder, output_folder,
+def evaluate_sample(args,config, data, sample, inst_folder, output_folder,
                     file_format):
     if os.path.isfile(data):
         gt_path = data
@@ -545,12 +552,22 @@ def evaluate_sample(config, data, sample, inst_folder, output_folder,
         gt_key = config['data']['gt_key']
 
     sample_path = os.path.join(inst_folder, sample + "." + file_format)
-    return evaluate_file(sample_path, gt_path,
-                         res_key=config['evaluation']['res_key'],
-                         gt_key=gt_key,
-                         foreground_only=config['evaluation']['res_key'],
-                         out_dir=output_folder, suffix="",
-                         debug=config['general']['debug'])
+
+    if "gauss" in args.setup:
+        if args.run_from_exp:
+            evaluate = importlib.import_module(
+                config['base'].replace("/", ".") + '.evaluate')
+        else:
+            evaluate = importlib.import_module(
+                args.app + '.02_setups.' + args.setup + '.evaluate')
+        eval_fn = evaluate.evaluate_file
+    else:
+        eval_fn = evaluate_file
+    return eval_fn(res_file=sample_path, gt_file=gt_path,
+                   gt_key=gt_key,
+                   out_dir=output_folder, suffix="",
+                   **config['evaluation'],
+                   debug=config['general']['debug'])
 
 
 @time_func
@@ -562,14 +579,15 @@ def evaluate(args, config, data, inst_folder, output_folder):
     if num_workers > 1:
         metric_dicts = Parallel(n_jobs=num_workers, backend='multiprocessing',
                                 verbose=0) \
-            (delayed(evaluate_sample)(config, data, s, inst_folder,
+            (delayed(evaluate_sample)(args, config, data, s, inst_folder,
                                       output_folder, file_format)
              for s in samples)
     else:
         metric_dicts = []
         for sample in samples:
-            metric_dict = evaluate_sample(config, data, sample, inst_folder,
-                                          output_folder, file_format)
+            metric_dict = evaluate_sample(args, config, data, sample,
+                                          inst_folder, output_folder,
+                                          file_format)
             metric_dicts.append(metric_dict)
 
     accs = []

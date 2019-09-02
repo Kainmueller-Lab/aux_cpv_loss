@@ -27,14 +27,11 @@ def train_until(**kwargs):
     anchor = gp.ArrayKey('ANCHOR')
     raw = gp.ArrayKey('RAW')
     raw_cropped = gp.ArrayKey('RAW_CROPPED')
-    gt_fgbg = gp.ArrayKey('GT_FGBG')
 
-    loss_weights_fgbg = gp.ArrayKey('LOSS_WEIGHTS_FGBG')
-
-    pred_fgbg = gp.ArrayKey('PRED_FGBG')
-
-    pred_fgbg_gradients = gp.ArrayKey('PRED_FGBG_GRADIENTS')
-
+    points = gp.PointsKey('POINTS')
+    gt_cp = gp.ArrayKey('GT_CP')
+    pred_cp = gp.ArrayKey('PRED_CP')
+    pred_cp_gradients = gp.ArrayKey('PRED_CP_GRADIENTS')
 
     with open(os.path.join(kwargs['output_folder'],
                            kwargs['name'] + '_config.json'), 'r') as f:
@@ -51,18 +48,17 @@ def train_until(**kwargs):
     request = gp.BatchRequest()
     request.add(raw, input_shape_world)
     request.add(raw_cropped, output_shape_world)
-    request.add(gt_fgbg, output_shape_world)
+    request.add(gt_cp, output_shape_world)
     request.add(anchor, output_shape_world)
-    request.add(loss_weights_fgbg, output_shape_world)
 
     # when we make a snapshot for inspection (see below), we also want to
     # request the predicted affinities and gradients of the loss wrt the
     # affinities
     snapshot_request = gp.BatchRequest()
     snapshot_request.add(raw_cropped, output_shape_world)
-    snapshot_request.add(gt_fgbg, output_shape_world)
-    snapshot_request.add(pred_fgbg, output_shape_world)
-    # snapshot_request.add(pred_fgbg_gradients, output_shape_world)
+    snapshot_request.add(gt_cp, output_shape_world)
+    snapshot_request.add(pred_cp, output_shape_world)
+    # snapshot_request.add(pred_cp_gradients, output_shape_world)
 
 
     if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
@@ -90,34 +86,41 @@ def train_until(**kwargs):
         sourceNode = gp.ZarrSource
 
     augmentation = kwargs['augmentation']
+    sources = tuple(
+        (sourceNode(
+            fls[t] + "." + kwargs['input_format'],
+            datasets={
+                raw: 'volumes/raw',
+                anchor: 'volumes/gt_fgbg',
+            },
+            array_specs={
+                raw: gp.ArraySpec(interpolatable=True),
+                anchor: gp.ArraySpec(interpolatable=False)
+            }
+        ),
+         gp.CsvIDPointsSource(
+             fls[t] + ".csv",
+             points,
+             points_spec = gp.PointsSpec(roi=gp.Roi(
+                 gp.Coordinate((0,0,0)),
+                 gp.Coordinate(shapes[t])))
+         ))
+        + gp.MergeProvider()
+        + gp.Pad(raw, None)
+        + gp.Pad(points, None)
+
+        # chose a random location for each requested batch
+        + gp.RandomLocation()
+
+        for t in range(ln)
+    )
     pipeline = (
-        tuple(
-            sourceNode(
-                fls[t] + "." + kwargs['input_format'],
-                datasets={
-                    raw: 'volumes/raw',
-                    gt_fgbg: 'volumes/gt_fgbg',
-                    anchor: 'volumes/gt_fgbg',
-                },
-                array_specs={
-                    raw: gp.ArraySpec(interpolatable=True),
-                    gt_fgbg: gp.ArraySpec(interpolatable=False),
-                    anchor: gp.ArraySpec(interpolatable=False)
-                }
-            )
-            + gp.Pad(raw, None)
-            + gp.Pad(gt_fgbg, None)
-
-            # chose a random location for each requested batch
-            + gp.RandomLocation()
-
-            for t in range(ln)
-        ) +
+        sources +
 
         # chose a random source (i.e., sample) from the above
         gp.RandomProvider() +
 
-        # elastically deform the batch
+       # elastically deform the batch
         gp.ElasticAugment(
             augmentation['elastic']['control_point_spacing'],
             augmentation['elastic']['jitter_sigma'],
@@ -137,10 +140,13 @@ def train_until(**kwargs):
             shift_max=augmentation['intensity']['shift'][1],
             z_section_wise=False) +
 
-        # create a weight array that balances positive and negative samples
-        gp.BalanceLabels(
-            gt_fgbg,
-            loss_weights_fgbg) +
+        gp.RasterizePoints(
+            points,
+            gt_cp,
+            array_spec=gp.ArraySpec(voxel_size=voxel_size),
+            settings=gp.RasterizationSettings(
+                radius=(2, 2, 2),
+                mode='peak')) +
 
         # pre-cache batches from the point upstream
         gp.PreCache(
@@ -157,16 +163,15 @@ def train_until(**kwargs):
             loss=net_names['loss'],
             inputs={
                 net_names['raw']: raw,
-                net_names['gt_fgbg']: gt_fgbg,
+                net_names['gt_cp']: gt_cp,
                 net_names['anchor']: anchor,
-                net_names['loss_weights_fgbg']: loss_weights_fgbg
             },
             outputs={
-                net_names['pred_fgbg']: pred_fgbg,
+                net_names['pred_cp']: pred_cp,
                 net_names['raw_cropped']: raw_cropped,
             },
             gradients={
-                net_names['pred_fgbg']: pred_fgbg_gradients,
+                # net_names['pred_cp']: pred_cp_gradients,
             },
             save_every=kwargs['checkpoints']) +
 
@@ -175,9 +180,9 @@ def train_until(**kwargs):
             {
                 raw: '/volumes/raw',
                 raw_cropped: 'volumes/raw_cropped',
-                gt_fgbg: '/volumes/gt_fgbg',
-                pred_fgbg: '/volumes/pred_fgbg',
-                pred_fgbg_gradients: '/volumes/pred_fgbg_gradients',
+                gt_cp: '/volumes/gt_cp',
+                pred_cp: '/volumes/pred_cp',
+                # pred_cp_gradients: '/volumes/pred_cp_gradients',
             },
             output_dir=os.path.join(kwargs['output_folder'], 'snapshots'),
             output_filename='batch_{iteration}.hdf',

@@ -1,0 +1,19 @@
+[optimizer]
+loss = 'ce'
+
+[training]
+folds = '12'
+
+[validation]
+fold = '3'
+gauss_thresh = [0.5, 0.8, 0.95, 0.99]
+
+[evaluation]
+distance_limit = 3
+metric = 'gt_pred/AP'
+
+[preprocessing]
+
+[postprocessing]
+params = ["gauss_thresh"]
+gauss_thresh = 0.98
