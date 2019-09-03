@@ -1,8 +1,9 @@
 [optimizer]
-loss = 'ce'
+loss = 'mse'
 
 [training]
 folds = '12'
+max_iterations = 50000
 
 [validation]
 fold = '3'
@@ -18,4 +19,4 @@ sparse = true
 
 [postprocessing]
 params = ["gauss_thresh"]
-gauss_thresh = 0.98
+gauss_thresh = 0.8

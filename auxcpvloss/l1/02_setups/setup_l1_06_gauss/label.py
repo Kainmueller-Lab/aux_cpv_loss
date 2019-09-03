@@ -40,6 +40,15 @@ def label(**kwargs):
     logger.debug("%s: gt min %f, max %f",
                  kwargs['sample'], gt_labels.min(), gt_labels.max())
 
+
+    markers = 1*(gauss > kwargs['gauss_thresh'])
+    logger.debug("pixel over threshold: %s (%s)", np.argwhere(markers).shape,
+                 markers.dtype)
+    if np.argwhere(markers).shape[0] == 0:
+        logger.error("no blobs found for %s (0 pixel over threshold)",
+                     kwargs['sample'])
+        return
+
     # create output file
     if kwargs['output_format'] == "hdf":
         output_file = h5py.File(
@@ -50,11 +59,9 @@ def label(**kwargs):
 
     if kwargs['debug']:
         output_file.create_dataset('volumes/gauss', data=gauss,
-                                   compression='gzip')
+                                   dtype=np.float32, compression='gzip')
 
-    markers = 1*(gauss > kwargs['gauss_thresh'])
-    logger.debug("pixel over threshold: %s (%s)", np.argwhere(markers).shape,
-                 markers.dtype)
+
     if kwargs['debug']:
         output_file.create_dataset('volumes/markers1',
                                    data=markers.astype(np.uint16),
@@ -79,7 +86,7 @@ def label(**kwargs):
     reg_max = gaussTmp
 
     output_file.create_dataset('volumes/markers', data=reg_max,
-                               compression='gzip')
+                               dtype=np.float32, compression='gzip')
     output_file.create_dataset('volumes/raw_cropped', data=raw,
                                compression='gzip')
 

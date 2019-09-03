@@ -62,7 +62,7 @@ def mk_net(**kwargs):
 
     if kwargs['loss'] == "mse":
         lossFn = tf.losses.mean_squared_error
-        pred_cp = tf.sigmoid(pred_cp)
+        # pred_cp = tf.sigmoid(pred_cp)
     elif kwargs['loss'] == "ce":
         lossFn = tf.losses.sigmoid_cross_entropy
 

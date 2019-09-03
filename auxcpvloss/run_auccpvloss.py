@@ -28,7 +28,7 @@ import toml
 
 from auxcpvloss import util
 import evaluateInstanceSegmentation as eval_seg
-import evaluateInstanceSegmentation as eval_det
+import evaluateInstanceDetection as eval_det
 
 
 def merge_dicts(sink, source):
@@ -437,7 +437,7 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     param_sets = list(named_product(
         **get_postprocessing_params(
             config['validation'],
-            config['postprocessing'].get('params'))))
+            config['postprocessing'].get('params', []))))
 
     # only predict (params=None)
     for checkpoint in checkpoints:
@@ -753,7 +753,7 @@ def main():
     else:
         params = get_postprocessing_params(
             config['postprocessing'],
-            config['postprocessing'].get('params'))
+            config['postprocessing'].get('params', []))
         if checkpoint is None:
             raise RuntimeError("checkpoint must be set but is None")
         if 'validate' in args.do:

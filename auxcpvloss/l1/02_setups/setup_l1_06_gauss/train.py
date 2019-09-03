@@ -14,6 +14,14 @@ import gunpowder as gp
 
 logger = logging.getLogger(__name__)
 
+class NoOp(gp.BatchFilter):
+
+    def __init__(self):
+        pass
+
+    def process(self, batch, request):
+        pass
+
 
 def train_until(**kwargs):
     if tf.train.latest_checkpoint(kwargs['output_folder']):
@@ -121,24 +129,31 @@ def train_until(**kwargs):
         gp.RandomProvider() +
 
        # elastically deform the batch
-        gp.ElasticAugment(
+        (gp.ElasticAugment(
             augmentation['elastic']['control_point_spacing'],
             augmentation['elastic']['jitter_sigma'],
             [augmentation['elastic']['rotation_min']*np.pi/180.0,
-             augmentation['elastic']['rotation_max']*np.pi/180.0]) +
+             augmentation['elastic']['rotation_max']*np.pi/180.0]) \
+        if augmentation.get('elastic') is not None and \
+           augmentation.get('elastic') != {} else NoOp())  +
 
         # apply transpose and mirror augmentations
-        gp.SimpleAugment(mirror_only=augmentation['simple'].get("mirror"),
-                         transpose_only=augmentation['simple'].get("transpose")) +
+        (gp.SimpleAugment(
+            mirror_only=augmentation['simple'].get("mirror"),
+            transpose_only=augmentation['simple'].get("transpose")) \
+        if augmentation.get('simple') is not None and \
+           augmentation.get('simple') != {} else NoOp())  +
 
         # # scale and shift the intensity of the raw array
-        gp.IntensityAugment(
+        (gp.IntensityAugment(
             raw,
             scale_min=augmentation['intensity']['scale'][0],
             scale_max=augmentation['intensity']['scale'][1],
             shift_min=augmentation['intensity']['shift'][0],
             shift_max=augmentation['intensity']['shift'][1],
-            z_section_wise=False) +
+            z_section_wise=False) \
+        if augmentation.get('intensity') is not None and \
+           augmentation.get('intensity') != {} else NoOp())  +
 
         gp.RasterizePoints(
             points,
