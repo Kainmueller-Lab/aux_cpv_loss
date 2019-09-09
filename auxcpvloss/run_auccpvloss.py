@@ -405,11 +405,11 @@ def validate_checkpoint(args, config, data, checkpoint, params, train_folder,
 
     # evaluate
     logger.info("evaluating checkpoint %d %s", checkpoint, params)
-    acc = evaluate(args, config, data, inst_folder, eval_folder)
+    metric = evaluate(args, config, data, inst_folder, eval_folder)
     logger.info("%s checkpoint %6d: %.4f (%s)",
-                config['evaluation']['metric'], checkpoint, acc, params)
+                config['evaluation']['metric'], checkpoint, metric, params)
 
-    return acc
+    return metric
 
 
 def get_postprocessing_params(config, params_list):
@@ -431,7 +431,7 @@ def named_product(**items):
 def validate_checkpoints(args, config, data, checkpoints, train_folder,
                          test_folder, output_folder):
     # validate all checkpoints and return best one
-    accs = []
+    metrics = []
     ckpts = []
     params = []
     results = []
@@ -456,38 +456,26 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
                 args, config, data, checkpoint, p, train_folder, test_folder,
                 output_folder)
              for p in param_sets)
-        for idx, acc in enumerate(res):
-            accs.append(acc)
+        for idx, metric in enumerate(res):
+            metrics.append(metric)
             ckpts.append(checkpoint)
             params.append(param_sets[idx])
             results.append({'checkpoint': checkpoint,
-                            'accuracy': acc,
+                            'metric': metric,
                             'params': param_sets[idx]})
 
-    # for checkpoint in checkpoints:
-    #     for param_set in param_sets:
-    #         acc = validate_checkpoint(args, config, data, checkpoint,
-    #                                   param_set, train_folder, test_folder,
-    #                                   output_folder)
-    #         accs.append(acc)
-    #         ckpts.append(checkpoint)
-    #         params.append(param_set)
-    #         results.append({'checkpoint': checkpoint,
-    #                         'accuracy': acc,
-    #                         'params': param_set})
-
-    for ch, acc, p in zip(ckpts, accs, params):
+    for ch, metric, p in zip(ckpts, metrics, params):
         logger.info("%s checkpoint %6d: %.4f (%s)",
-                    config['evaluation']['metric'], ch, acc, p)
+                    config['evaluation']['metric'], ch, metric, p)
 
-    if config['general']['debug'] and None in accs:
+    if config['general']['debug'] and None in metrics:
         logger.error("None in checkpoint found: %s (continuing with last)",
-                     tuple(accs))
+                     tuple(metrics))
         best_checkpoint = ckpts[-1]
         best_params = params[-1]
     else:
-        best_checkpoint = ckpts[np.argmax(accs)]
-        best_params = params[np.argmax(accs)]
+        best_checkpoint = ckpts[np.argmax(metrics)]
+        best_params = params[np.argmax(metrics)]
     logger.info('best checkpoint: %d', best_checkpoint)
     logger.info('best params: %s', best_params)
     with open(os.path.join(output_folder, "results.json"), 'w') as f:
@@ -586,7 +574,7 @@ def evaluate(args, config, data, inst_folder, output_folder):
                                           file_format)
             metric_dicts.append(metric_dict)
 
-    accs = []
+    metrics = []
     for metric_dict, sample in zip(metric_dicts, samples):
         if metric_dict is None:
             continue
@@ -594,9 +582,9 @@ def evaluate(args, config, data, inst_folder, output_folder):
             metric_dict = metric_dict[k]
         logger.info("%s sample %-19s: %.4f",
                     config['evaluation']['metric'], sample, metric_dict)
-        accs.append(metric_dict)
+        metrics.append(metric_dict)
 
-    return np.mean(accs)
+    return np.mean(metrics)
 
 
 def visualize():
@@ -755,21 +743,26 @@ def main():
         params = get_postprocessing_params(
             config['postprocessing'],
             config['postprocessing'].get('params', []))
-        if checkpoint is None:
-            raise RuntimeError("checkpoint must be set but is None")
         if 'validate' in args.do:
+            if checkpoint is None:
+                raise RuntimeError("checkpoint must be set but is None")
             data, output_folder = select_validation_data(config, train_folder,
                                                          val_folder)
             _ = validate_checkpoint(args, config, data, checkpoint, params,
                                     train_folder, test_folder, output_folder)
 
-    params_str = [k + "_" + str(v).replace(".", "_")
+    if [do for do in args.do if do in ['all', 'predict', 'label',
+                                       'postprocess', 'evaluate']]:
+        if checkpoint is None:
+            raise RuntimeError("checkpoint must be set but is None")
+
+        params_str = [k + "_" + str(v).replace(".", "_")
                       for k, v in params.items()]
-    pred_folder = os.path.join(test_folder, 'processed', str(checkpoint))
-    inst_folder = os.path.join(test_folder, 'instanced', str(checkpoint),
-                               *params_str)
-    eval_folder = os.path.join(test_folder, 'evaluated', str(checkpoint),
-                               *params_str)
+        pred_folder = os.path.join(test_folder, 'processed', str(checkpoint))
+        inst_folder = os.path.join(test_folder, 'instanced', str(checkpoint),
+                                   *params_str)
+        eval_folder = os.path.join(test_folder, 'evaluated', str(checkpoint),
+                                   *params_str)
 
     # predict test set
     if 'all' in args.do or 'predict' in args.do:
@@ -796,10 +789,10 @@ def main():
     if 'all' in args.do or 'evaluate' in args.do:
         os.makedirs(eval_folder, exist_ok=True)
         logger.info("evaluating checkpoint %d", checkpoint)
-        acc = evaluate(args, config, config['data']['test_data'], inst_folder,
-                       eval_folder)
+        metric = evaluate(args, config, config['data']['test_data'], inst_folder,
+                          eval_folder)
         logger.info("%s TEST checkpoint %d: %.4f (%s)",
-                    config['evaluation']['metric'], checkpoint, acc, params)
+                    config['evaluation']['metric'], checkpoint, metric, params)
 
     if 'all' in args.do or 'visualize' in args.do:
         visualize()
