@@ -15,6 +15,7 @@ except Exception as e:
     print(e)
 from multiprocessing import Process
 import os
+import runpy
 import shutil
 import sys
 import time
@@ -218,22 +219,22 @@ def setDebugValuesForConfig(config):
 @time_func
 def mknet(args, config, train_folder, test_folder):
     if args.run_from_exp:
-        mknet = importlib.import_module(
-            config['base'].replace("/", ".") + '.mknet')
+        mk_net = runpy.run_path(
+            os.path.join(config['base'], 'mknet.py'))['mk_net']
     else:
-        mknet = importlib.import_module(
-            args.app + '.02_setups.' + args.setup + '.mknet')
+        mk_net = importlib.import_module(
+            args.app + '.02_setups.' + args.setup + '.mknet').mk_net
 
-    mknet.mk_net(name=config['model']['train_net_name'],
-                 input_shape=config['model']['train_input_shape'],
-                 output_folder=train_folder,
-                 **config['model'], **config['optimizer'],
-                 debug=config['general']['debug'])
-    mknet.mk_net(name=config['model']['test_net_name'],
-                 input_shape=config['model']['test_input_shape'],
-                 output_folder=test_folder,
-                 **config['model'], **config['optimizer'],
-                 debug=config['general']['debug'])
+    mk_net(name=config['model']['train_net_name'],
+           input_shape=config['model']['train_input_shape'],
+           output_folder=train_folder,
+           **config['model'], **config['optimizer'],
+           debug=config['general']['debug'])
+    mk_net(name=config['model']['test_net_name'],
+           input_shape=config['model']['test_input_shape'],
+           output_folder=test_folder,
+           **config['model'], **config['optimizer'],
+           debug=config['general']['debug'])
 
 
 @fork
@@ -244,20 +245,20 @@ def train(args, config, train_folder):
 
     data_files = get_list_train_files(config)
     if args.run_from_exp:
-        train = importlib.import_module(
-            config['base'].replace("/", ".") + '.train')
+        train = runpy.run_path(
+            os.path.join(config['base'], 'train.py'))['train_until']
     else:
         train = importlib.import_module(
-            args.app + '.02_setups.' + args.setup + '.train')
+            args.app + '.02_setups.' + args.setup + '.train').train_until
 
-    train.train_until(name=config['model']['train_net_name'],
-                      max_iteration=config['training']['max_iterations'],
-                      output_folder=train_folder,
-                      data_files=data_files,
-                      voxel_size=config['data']['voxel_size'],
-                      input_format=config['data']['input_format'],
-                      **config['training'],
-                      **config['preprocessing'])
+    train_until(name=config['model']['train_net_name'],
+                max_iteration=config['training']['max_iterations'],
+                output_folder=train_folder,
+                data_files=data_files,
+                voxel_size=config['data']['voxel_size'],
+                input_format=config['data']['input_format'],
+                **config['training'],
+                **config['preprocessing'])
 
 
 def get_list_train_files(config):
@@ -306,21 +307,21 @@ def predict_sample(args, config, name, data, sample, checkpoint, input_folder,
         raise RuntimeError("no free GPU available!")
 
     if args.run_from_exp:
-        predict = importlib.import_module(
-            config['base'].replace("/", ".") + '.predict')
+        predict = runpy.run_path(
+            os.path.join(config['base'], 'predict.py'))['predict']
     else:
         predict = importlib.import_module(
-            args.app + '.02_setups.' + args.setup + '.predict')
+            args.app + '.02_setups.' + args.setup + '.predict').predict
 
     logger.info('predicting %s!', sample)
-    predict.predict(name=name, sample=sample, checkpoint=checkpoint,
-                    data_folder=data, input_folder=input_folder,
-                    output_folder=output_folder,
-                    voxel_size=config['data']['voxel_size'],
-                    input_format=config['data']['input_format'],
-                    **config['preprocessing'],
-                    **config['model'],
-                    **config['prediction'])
+    predict(name=name, sample=sample, checkpoint=checkpoint,
+            data_folder=data, input_folder=input_folder,
+            output_folder=output_folder,
+            voxel_size=config['data']['voxel_size'],
+            input_format=config['data']['input_format'],
+            **config['preprocessing'],
+            **config['model'],
+            **config['prediction'])
 
 
 @time_func
@@ -497,11 +498,11 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
 def label_sample(args, config, data, pred_folder, output_folder, params,
                  sample):
     if args.run_from_exp:
-        label = importlib.import_module(
-            config['base'].replace("/", ".") + '.label')
+        label = runpy.run_path(
+            os.path.join(config['base'], 'label.py'))['label']
     else:
         label = importlib.import_module(
-            args.app + '.02_setups.' + args.setup + '.label')
+            args.app + '.02_setups.' + args.setup + '.label').label
 
     output_fn = os.path.join(
         output_folder, sample + '.' + \
@@ -517,14 +518,14 @@ def label_sample(args, config, data, pred_folder, output_folder, params,
         gt = None
 
     config['postprocessing'] = merge_dicts(config['postprocessing'], params)
-    label.label(sample=sample, gt=gt, pred_folder=pred_folder,
-                output_folder=output_folder,
-                output_fn=output_fn,
-                pred_format=config['prediction']['output_format'],
-                gt_format=config['data']['input_format'],
-                gt_key=config['data']['gt_key'],
-                debug=config['general']['debug'],
-                **config['postprocessing'])
+    label(sample=sample, gt=gt, pred_folder=pred_folder,
+          output_folder=output_folder,
+          output_fn=output_fn,
+          pred_format=config['prediction']['output_format'],
+          gt_format=config['data']['input_format'],
+          gt_key=config['data']['gt_key'],
+          debug=config['general']['debug'],
+          **config['postprocessing'])
 
 
 @time_func
