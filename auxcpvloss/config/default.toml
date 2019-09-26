@@ -43,7 +43,7 @@ lr = 0.0001
 [training]
 batch_size = 1
 num_gpus = 1
-num_workers = 25
+num_workers = 10
 cache_size = 40
 max_iterations = 200000
 checkpoints = 10000
@@ -70,16 +70,16 @@ num_workers = 10
 output_format = 'zarr'
 
 [validation]
-fold = '3'
-num_workers = 32
+fold = '1'
+num_workers = 10
 num_dilations = [1, 2]
 fg_thresh = [0.5, 0.8, 0.95, 0.99]
 seed_thresh = [0.8, 0.9, 0.98, 0.99]
 
 [evaluation]
-metric = 'confusion_matrix/th_0_5/fscore'
+metric = 'confusion_matrix/th_0_5/AP'
 res_key = 'volumes/watershed_seg_fg_dilated'
-num_workers = 20
+num_workers = 10
 foreground_only = false
 
 [preprocessing]
@@ -88,7 +88,7 @@ foreground_only = false
 params = ['num_dilations', 'fg_thresh', 'seed_thresh']
 output_format = 'hdf'
 include_gt = true
-num_workers = 8
+num_workers = 10
 num_dilations = 1
 fg_thresh = 0.95
 seed_thresh = 0.98

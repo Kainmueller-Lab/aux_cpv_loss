@@ -1,3 +1,10 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import argparse
 from datetime import datetime
 from glob import glob
@@ -26,6 +33,7 @@ from natsort import natsorted
 import numpy as np
 import pandas as pd
 import toml
+import zarr
 
 from auxcpvloss import util
 import evaluateInstanceSegmentation as eval_seg
@@ -53,6 +61,30 @@ def backup_and_copy_file(source, target, fn):
         source = os.path.join(source, fn)
         shutil.copy2(source, target)
 
+def check_file(fn, remove_on_error=False, key=None):
+    if fn.endswith("zarr"):
+        try:
+            fl = zarr.open(fn, 'r')
+            if key is not None:
+                tmp = fl[key]
+            return True
+        except Exception as e:
+            logger.info("%s", e)
+            if remove_on_error:
+                shutil.rmtree(fn, ignore_errors=True)
+            return False
+    elif fn.endswith("hdf"):
+        try:
+            with h5py.File(fn, 'r') as fl:
+                if key is not None:
+                    tmp = fl[key]
+            return True
+        except Exception as e:
+            if remove_on_error:
+                os.remove(fn)
+            return False
+    else:
+        raise NotImplementedError("invalid file type")
 
 def time_func(func):
     @functools.wraps(func)
@@ -158,7 +190,9 @@ def get_arguments():
 
 
 def create_folders(args, filebase):
-    if args.expid is None and args.run_from_exp:
+    if (args.expid is None or \
+        not os.path.isdir(os.path.join(filebase, 'train'))) and \
+        args.run_from_exp:
         setup = os.path.join(args.app, '02_setups', args.setup)
         backup_and_copy_file(setup, filebase, 'train.py')
         backup_and_copy_file(setup, filebase, 'mknet.py')
@@ -245,10 +279,10 @@ def train(args, config, train_folder):
 
     data_files = get_list_train_files(config)
     if args.run_from_exp:
-        train = runpy.run_path(
+        train_until = runpy.run_path(
             os.path.join(config['base'], 'train.py'))['train_until']
     else:
-        train = importlib.import_module(
+        train_until = importlib.import_module(
             args.app + '.02_setups.' + args.setup + '.train').train_until
 
     train_until(name=config['model']['train_net_name'],
@@ -330,12 +364,16 @@ def predict(args, config, name, data, checkpoint, test_folder, output_folder):
     samples = get_list_samples(config, data, config['data']['input_format'])
 
     for idx, sample in enumerate(samples):
-        if not config['general']['overwrite'] and \
-           os.path.exists(os.path.join(
-               output_folder,
-               sample + '.' + config['prediction']['output_format'])):
-            logger.info('Skipping prediction for %s. Already exists!', sample)
-            continue
+        fl = os.path.join(output_folder,
+                          sample + '.' +config['prediction']['output_format'])
+        if not config['general']['overwrite'] and os.path.exists(fl):
+            if check_file(fl, remove_on_error=True, key="volumes/pred_fgbg"):
+                logger.info('Skipping prediction for %s. Already exists!',
+                            sample)
+                continue
+            else:
+                logger.info('prediction %s broken. recomputing..!',
+                            sample)
 
         if args.debug_args and idx >= 2:
             break
@@ -497,8 +535,12 @@ def label_sample(args, config, data, pred_folder, output_folder, params,
         config['postprocessing']['output_format'])
     if not config['general']['overwrite'] and \
        os.path.exists(output_fn):
-        logger.info('Skipping labelling for %s. Already exists!', sample)
-        return
+        if check_file(output_fn, remove_on_error=True,
+                      key=config['evaluation']['res_key']):
+            logger.info('Skipping labelling for %s. Already exists!', sample)
+            return
+        else:
+            logger.info('labelling %s broken. recomputing..!', sample)
 
     if config['postprocessing']['include_gt']:
         gt = os.path.join(data, sample + "." + config['data']['input_format'])
@@ -605,8 +647,7 @@ def main():
         else:
             base = os.path.join(args.root, args.expid)
     else:
-        base = os.path.join(args.root,
-                            args.app + '_' + args.setup + '_' + \
+        base = os.path.join(args.root, args.setup + '_' + \
                             datetime.now().strftime('%y%m%d_%H%M%S'))
     os.makedirs(base, exist_ok=True)
     # create folder structure for experiment
@@ -636,7 +677,10 @@ def main():
     logger.info('attention: using config file %s', args.config)
 
     if "CUDA_VISIBLE_DEVICES" not in os.environ:
-        selectedGPU = util.selectGPU()
+        try:
+            selectedGPU = util.selectGPU()
+        except:
+            selectedGPU = None
         if selectedGPU is None:
             logger.warning("no free GPU available!")
         else:
@@ -709,7 +753,10 @@ def main():
                 str(checkpoint))
 
         elif args.test_checkpoint == 'last':
-            with open(os.path.join(train_folder, 'checkpoint')) as f:
+            checkpoint_file = os.path.join(train_folder, 'checkpoint')
+            assert os.path.isfile(checkpoint_file), \
+                "checkpoint file not found: %s" % checkpoint_file
+            with open(checkpoint_file) as f:
                 d = dict(
                     x.rstrip().replace('"', '').replace(':', '').split(None, 1)
                     for x in f)
@@ -720,20 +767,19 @@ def main():
                 logger.error('Could not convert checkpoint to int.')
                 raise
 
-        if checkpoint is None and \
-           any(i in args.do for i in ['validate', 'predict', 'evaluate']):
-            raise ValueError(
-                'Please provide a checkpoint (--checkpoint/--test_checkpoint)')
 
     # validation:
     # validate all checkpoints
-    if ('all' in args.do and args.test_checkpoint == 'best') \
-            or 'validate_checkpoints' in args.do:
+    if ([do for do in args.do if do in ['all', 'predict', 'label',
+                                       'postprocess', 'evaluate']]\
+        and args.test_checkpoint == 'best') \
+        or 'validate_checkpoints' in args.do:
         data, output_folder = select_validation_data(config, train_folder,
                                                      val_folder)
         checkpoints = get_checkpoint_list(config['model']['train_net_name'],
                                           train_folder)
         logger.info("validating all checkpoints")
+        assert len(checkpoints) > 0, "no checkpoints found!"
         checkpoint, params = validate_checkpoints(args, config, data,
                                                   checkpoints,
                                                   train_folder, test_folder,
@@ -743,13 +789,17 @@ def main():
         params = get_postprocessing_params(
             config['postprocessing'],
             config['postprocessing'].get('params', []))
-        if 'validate' in args.do:
-            if checkpoint is None:
+
+    if 'validate' in args.do:
+        if checkpoint is None:
+            if args.checkpoint is not None:
+                checkpoint = int(args.checkpoint)
+            else:
                 raise RuntimeError("checkpoint must be set but is None")
-            data, output_folder = select_validation_data(config, train_folder,
-                                                         val_folder)
-            _ = validate_checkpoint(args, config, data, checkpoint, params,
-                                    train_folder, test_folder, output_folder)
+        data, output_folder = select_validation_data(config, train_folder,
+                                                     val_folder)
+        _ = validate_checkpoint(args, config, data, checkpoint, params,
+                                train_folder, test_folder, output_folder)
 
     if [do for do in args.do if do in ['all', 'predict', 'label',
                                        'postprocess', 'evaluate']]:

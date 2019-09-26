@@ -104,8 +104,8 @@ def label(**kwargs):
                  kwargs['sample'], np.min(seeds), np.max(seeds))
 
     if np.count_nonzero(seeds) == 0:
-        raise RuntimeError("{}: no seed points found for watershed".format(
-            kwargs['sample']))
+        logger.warning("%s: no seed points found for watershed", sample)
+
     output_file.create_dataset('volumes/seeds', data=seeds,
                                compression='gzip')
     markers, cnt = scipy.ndimage.label(seeds)
