@@ -52,7 +52,8 @@ def label(**kwargs):
     else:
         raise NotImplementedError("invalid pred format")
     surf = np.array(input_file[kwargs['surf_key']])
-    fgbg = 1.0 - np.array(input_file[kwargs['fgbg_key']])
+    bg = np.array(input_file[kwargs['fgbg_key']])
+    fgbg = 1.0 - bg
     raw = np.array(input_file[kwargs['raw_key']])
 
     if kwargs['pred_format'] == "hdf":
@@ -60,7 +61,7 @@ def label(**kwargs):
 
     # threshold bg/fg
     fg = 1.0 * (fgbg > kwargs['fg_thresh'])
-    if np.count_nonzero(fg) == 0:
+    if np.count_nonzero(bg) == 0:
         raise RuntimeError("{}: no foreground found".format(kwargs['sample']))
 
     surf = scipy.special.softmax(surf, axis=0)

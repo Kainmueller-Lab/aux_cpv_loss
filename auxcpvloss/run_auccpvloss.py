@@ -592,6 +592,7 @@ def evaluate_sample(config, data, sample, inst_folder, output_folder,
     return eval_fn(res_file=sample_path, gt_file=gt_path,
                    gt_key=gt_key,
                    out_dir=output_folder, suffix="",
+                   use_linear_sum_assignment=True,
                    **config['evaluation'],
                    debug=config['general']['debug'])
 
