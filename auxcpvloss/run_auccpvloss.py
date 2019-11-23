@@ -5,6 +5,10 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
+os.environ['TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_ADD'] = 'Conv3D,Conv3DBackpropFilter,Conv3DBackpropFilterV2,Conv3DBackpropInput,Conv3DBackpropInputV2,Conv2D,Conv2DBackpropFilter,Conv2DBackpropFilterV2,Conv2DBackpropInput,Conv2DBackpropInputV2'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
+os.environ['TF_CPP_VMODULE'] = 'amp_optimizer=2'
+# os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
 import argparse
 from datetime import datetime
 from glob import glob
@@ -14,6 +18,7 @@ import importlib
 import itertools
 import json
 import logging
+
 try:
     import absl.logging
     logging.root.removeHandler(absl.logging._absl_handler)
@@ -21,7 +26,9 @@ try:
 except Exception as e:
     print(e)
 from multiprocessing import Process
+import operator
 import os
+import random
 import runpy
 import shutil
 import sys
@@ -128,7 +135,7 @@ def get_arguments():
     parser.add_argument('-r', '--root', dest='root', default=None,
                         help='Experiment folder to store results.')
     parser.add_argument('-s', '--setup', dest='setup', default=None,
-                        help='Setup for experiment.')
+                        help='Setup for experiment.', required=True)
     parser.add_argument('-id', '--exp-id', dest='expid', default=None,
                         help='ID for experiment.')
 
@@ -253,22 +260,24 @@ def setDebugValuesForConfig(config):
 @time_func
 def mknet(args, config, train_folder, test_folder):
     if args.run_from_exp:
-        mk_net = runpy.run_path(
+        mk_net_fn = runpy.run_path(
             os.path.join(config['base'], 'mknet.py'))['mk_net']
     else:
-        mk_net = importlib.import_module(
+        mk_net_fn = importlib.import_module(
             args.app + '.02_setups.' + args.setup + '.mknet').mk_net
 
-    mk_net(name=config['model']['train_net_name'],
-           input_shape=config['model']['train_input_shape'],
-           output_folder=train_folder,
-           **config['model'], **config['optimizer'],
-           debug=config['general']['debug'])
-    mk_net(name=config['model']['test_net_name'],
-           input_shape=config['model']['test_input_shape'],
-           output_folder=test_folder,
-           **config['model'], **config['optimizer'],
-           debug=config['general']['debug'])
+    mk_net_fn(name=config['model']['train_net_name'],
+              input_shape=config['model']['train_input_shape'],
+              output_folder=train_folder,
+              **config['model'],
+              **config['optimizer'],
+              debug=config['general']['debug'])
+    mk_net_fn(name=config['model']['test_net_name'],
+              input_shape=config['model']['test_input_shape'],
+              output_folder=test_folder,
+              **config['model'],
+              **config['optimizer'],
+              debug=config['general']['debug'])
 
 
 @fork
@@ -279,20 +288,19 @@ def train(args, config, train_folder):
 
     data_files = get_list_train_files(config)
     if args.run_from_exp:
-        train_until = runpy.run_path(
+        train_fn = runpy.run_path(
             os.path.join(config['base'], 'train.py'))['train_until']
     else:
-        train_until = importlib.import_module(
+        train_fn = importlib.import_module(
             args.app + '.02_setups.' + args.setup + '.train').train_until
 
-    train_until(name=config['model']['train_net_name'],
-                max_iteration=config['training']['max_iterations'],
-                output_folder=train_folder,
-                data_files=data_files,
-                voxel_size=config['data']['voxel_size'],
-                input_format=config['data']['input_format'],
-                **config['training'],
-                **config['preprocessing'])
+    train_fn(name=config['model']['train_net_name'],
+             max_iteration=config['training']['max_iterations'],
+             output_folder=train_folder,
+             data_files=data_files,
+             **config['data'],
+             **config['training'],
+             **config['preprocessing'])
 
 
 def get_list_train_files(config):
@@ -314,7 +322,6 @@ def get_list_train_files(config):
 
 
 def get_list_samples(config, data, file_format):
-
     logger.info("reading data from %s", data)
     # read data
     if os.path.isfile(data):
@@ -341,21 +348,20 @@ def predict_sample(args, config, name, data, sample, checkpoint, input_folder,
         raise RuntimeError("no free GPU available!")
 
     if args.run_from_exp:
-        predict = runpy.run_path(
+        predict_fn = runpy.run_path(
             os.path.join(config['base'], 'predict.py'))['predict']
     else:
-        predict = importlib.import_module(
+        predict_fn = importlib.import_module(
             args.app + '.02_setups.' + args.setup + '.predict').predict
 
     logger.info('predicting %s!', sample)
-    predict(name=name, sample=sample, checkpoint=checkpoint,
-            data_folder=data, input_folder=input_folder,
-            output_folder=output_folder,
-            voxel_size=config['data']['voxel_size'],
-            input_format=config['data']['input_format'],
-            **config['preprocessing'],
-            **config['model'],
-            **config['prediction'])
+    predict_fn(name=name, sample=sample, checkpoint=checkpoint,
+               data_folder=data, input_folder=input_folder,
+               output_folder=output_folder,
+               **config['data'],
+               **config['model'],
+               **config['preprocessing'],
+               **config['prediction'])
 
 
 @time_func
@@ -365,7 +371,7 @@ def predict(args, config, name, data, checkpoint, test_folder, output_folder):
 
     for idx, sample in enumerate(samples):
         fl = os.path.join(output_folder,
-                          sample + '.' +config['prediction']['output_format'])
+                          sample + '.' + config['prediction']['output_format'])
         if not config['general']['overwrite'] and os.path.exists(fl):
             if check_file(fl, remove_on_error=True, key="volumes/pred_fgbg"):
                 logger.info('Skipping prediction for %s. Already exists!',
@@ -377,6 +383,7 @@ def predict(args, config, name, data, checkpoint, test_folder, output_folder):
 
         if args.debug_args and idx >= 2:
             break
+
         predict_sample(args, config, name, data, sample, checkpoint,
                        test_folder, output_folder)
 
@@ -414,9 +421,11 @@ def select_validation_data(config, train_folder, val_folder):
 def validate_checkpoint(args, config, data, checkpoint, params, train_folder,
                         test_folder, output_folder):
     logger.info("validating checkpoint %d %s", checkpoint, params)
+
     # create test iteration folders
     pred_folder = os.path.join(output_folder, 'processed', str(checkpoint))
     os.makedirs(pred_folder, exist_ok=True)
+
     # predict val data
     checkpoint_file = get_checkpoint_file(checkpoint,
                                           config['model']['train_net_name'],
@@ -450,11 +459,16 @@ def validate_checkpoint(args, config, data, checkpoint, params, train_folder,
     return metric
 
 
-def get_postprocessing_params(config, params_list):
+def get_postprocessing_params(config, params_list, test_config):
     params = {}
     for p in params_list:
-        params[p] = config[p]
+        if config is None or config[p] == []:
+            params[p] = [test_config[p]]
+        else:
+            params[p] = config[p]
+
     return params
+
 
 def named_product(**items):
     if items:
@@ -476,7 +490,9 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     param_sets = list(named_product(
         **get_postprocessing_params(
             config['validation'],
-            config['postprocessing'].get('params', []))))
+            config['validation'].get('params', []),
+            config['postprocessing']
+        )))
 
     # only predict (params=None)
     for checkpoint in checkpoints:
@@ -579,8 +595,8 @@ def evaluate_sample(config, data, sample, inst_folder, output_folder,
         gt_path = data
         gt_key = sample + "/gt"
     else:
-        gt_path = os.path.join(data,
-                               sample + "."+config['data']['input_format'])
+        gt_path = os.path.join(
+            data, sample + "." + config['data']['input_format'])
         gt_key = config['data']['gt_key']
 
     sample_path = os.path.join(inst_folder, sample + "." + file_format)
@@ -598,40 +614,157 @@ def evaluate_sample(config, data, sample, inst_folder, output_folder,
 
 
 @time_func
-def evaluate(args, config, data, inst_folder, output_folder):
+def evaluate(args, config, data, inst_folder, output_folder, return_avg=True):
     file_format = config['postprocessing']['output_format']
     samples = natsorted(get_list_samples(config, inst_folder, file_format))
 
     num_workers = config['evaluation'].get("num_workers", 1)
     if num_workers > 1:
         metric_dicts = Parallel(n_jobs=num_workers, backend='multiprocessing',
-                                verbose=0) \
-            (delayed(evaluate_sample)(config, data, s, inst_folder,
-                                      output_folder, file_format)
-             for s in samples)
+                                verbose=0)(
+            delayed(evaluate_sample)(config, data, s, inst_folder,
+                                     output_folder, file_format)
+            for s in samples)
     else:
         metric_dicts = []
         for sample in samples:
-            metric_dict = evaluate_sample(config, data, sample,
-                                          inst_folder, output_folder,
-                                          file_format)
+            metric_dict = evaluate_sample(config, data, sample, inst_folder,
+                                          output_folder, file_format)
             metric_dicts.append(metric_dict)
 
-    metrics = []
+    metrics = {}
+    metrics_full = {}
     for metric_dict, sample in zip(metric_dicts, samples):
         if metric_dict is None:
             continue
-        for k in config['evaluation']['metric'].split('/'):
+        metrics_full[sample] = metric_dict
+        for k in config['evaluation']['metric'].split('.'):
             metric_dict = metric_dict[k]
         logger.info("%s sample %-19s: %.4f",
-                    config['evaluation']['metric'], sample, metric_dict)
-        metrics.append(metric_dict)
+                    config['evaluation']['metric'], sample, float(metric_dict))
+        metrics[sample] = float(metric_dict)
 
-    return np.mean(metrics)
+    if 'summary' in config['evaluation'].keys():
+        eval_seg.summarize_metric_dict(
+            metric_dicts,
+            samples,
+            config['evaluation']['summary'],
+            os.path.join(output_folder, 'summary.csv')
+        )
+
+    if return_avg:
+        return np.mean(list(metrics.values()))
+    else:
+        return metrics, metrics_full
 
 
 def visualize():
-    print('visualize')
+    raise NotImplementedError
+
+
+@time_func
+def cross_validate(args, config, data, train_folder, test_folder):
+    # data = config['data']['test_data']
+    num_variations = 0
+    # print(config['cross_validate'])
+    for k, v in config['cross_validate'].items():
+        if k == 'checkpoints':
+            continue
+        elif num_variations == 0:
+            num_variations = len(v)
+        else:
+            assert num_variations == len(v), \
+                'number of values for parameters has to be fixed'
+    for checkpoint in config['cross_validate']['checkpoints']:
+        pred_folder = os.path.join(test_folder, 'processed', str(checkpoint))
+        checkpoint_file = get_checkpoint_file(checkpoint,
+                                              config['model']['train_net_name'],
+                                              train_folder)
+        predict(args, config, config['model']['test_net_name'], data,
+                checkpoint_file, test_folder, pred_folder)
+
+    params = config['validation'].get('params', [])
+    results = {}
+    for checkpoint in config['cross_validate']['checkpoints']:
+        for i in range(num_variations):
+            param_set = {}
+            for p in params:
+                param_set[p] = config['cross_validate'][p][i] \
+                               if p in config['cross_validate'] \
+                                  else config['vote_instances'][p]
+            params_str = [k + "_" + str(v).replace(".", "_")
+                          for k, v in param_set.items()]
+            inst_folder = os.path.join(test_folder, 'instanced',
+                                       str(checkpoint), *params_str)
+            os.makedirs(inst_folder, exist_ok=True)
+            eval_folder = os.path.join(test_folder, 'evaluated',
+                                       str(checkpoint), *params_str)
+            os.makedirs(eval_folder, exist_ok=True)
+            logger.info("labelling: %s", param_set)
+            label(args, config, data, pred_folder, inst_folder,
+                  param_set)
+            metrics = evaluate(args, config, data, inst_folder, eval_folder,
+                               return_avg=False)
+            results[(checkpoint, *(param_set.values()))] = metrics
+
+    samples = natsorted(get_list_samples(config, data, config['data']['input_format']))
+    for k, v in results.items():
+        assert len(v[0]) == len(samples)
+        for s1, s2 in zip(v[0].keys(), samples):
+            assert s1 == s2
+    random.Random(42).shuffle(samples)
+    samples_fold1 = set(samples[:len(samples)//2])
+    samples_fold2 = set(samples[len(samples)//2:])
+    results_fold1 = {}
+    results_fold2 = {}
+    for setup, result in results.items():
+        acc = []
+        for s in samples_fold1:
+            acc.append(result[0][s])
+        acc = np.mean(acc)
+        results_fold1[setup] = acc
+
+        acc = []
+        for s in samples_fold2:
+            acc.append(result[0][s])
+        acc = np.mean(acc)
+        results_fold2[setup] = acc
+
+    best_setup_fold1 = max(results_fold1.items(), key=operator.itemgetter(1))[0]
+    best_setup_fold2 = max(results_fold2.items(), key=operator.itemgetter(1))[0]
+
+    acc1 = []
+    for s in samples_fold2:
+        acc1.append(results[best_setup_fold1][0][s])
+    acc2 = []
+    for s in samples_fold1:
+        acc2.append(results[best_setup_fold2][0][s])
+
+    acc = np.mean(acc1+acc2)
+    acc1 = np.mean(acc1)
+    acc2 = np.mean(acc2)
+
+    logger.info("%s CROSS: %.4f [%.4f (%s), %.4f (%s)]",
+                config['evaluation']['metric'], acc,
+                acc1, best_setup_fold2,
+                acc2, best_setup_fold1)
+    print("%s CROSS: %.4f [%.4f (%s), %.4f (%s)]" % (
+        config['evaluation']['metric'], acc,
+        acc1, best_setup_fold2,
+        acc2, best_setup_fold1))
+
+    ap_ths = ["confusion_matrix.th_0_4.AP", "confusion_matrix.th_0_5.AP", "confusion_matrix.th_0_6.AP", "confusion_matrix.th_0_7.AP", "confusion_matrix.th_0_8.AP", "confusion_matrix.th_0_9.AP"]
+    for ap_th in ap_ths:
+        metric_dicts = results[best_setup_fold2][1]
+        metrics = {}
+        for sample, metric_dict in metric_dicts.items():
+            if metric_dict is None:
+                continue
+            for k in ap_th.split('.'):
+                metric_dict = metric_dict[k]
+            metrics[sample] = float(metric_dict)
+        metric = np.mean(list(metrics.values()))
+        print("%s: %.4f" % (ap_th, metric))
 
 
 def main():
@@ -650,8 +783,10 @@ def main():
     else:
         base = os.path.join(args.root, args.setup + '_' + \
                             datetime.now().strftime('%y%m%d_%H%M%S'))
-    os.makedirs(base, exist_ok=True)
+
     # create folder structure for experiment
+    if args.debug_args:
+        base = base.replace("experiments", "experimentsTmp")
     train_folder, val_folder, test_folder = create_folders(args, base)
 
     # read config file
@@ -678,15 +813,14 @@ def main():
     logger.info('attention: using config file %s', args.config)
 
     if "CUDA_VISIBLE_DEVICES" not in os.environ:
-        try:
-            selectedGPU = util.selectGPU()
-        except:
-            selectedGPU = None
+        selectedGPU = util.selectGPU(
+            quantity=config['training'].get('num_gpus', 1))
         if selectedGPU is None:
             logger.warning("no free GPU available!")
         else:
             os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(selectedGPU)
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+                [str(i) for i in selectedGPU])
         logger.info("setting CUDA_VISIBLE_DEVICES to device {}".format(
             selectedGPU))
     else:
@@ -768,7 +902,13 @@ def main():
                 logger.error('Could not convert checkpoint to int.')
                 raise
 
+        if checkpoint is None and \
+            any(i in args.do for i in ['validate', 'predict', 'decode',
+                                       'label', 'evaluate', 'infer']):
+            raise ValueError(
+                'Please provide a checkpoint (--checkpoint/--test-checkpoint)')
 
+    params = None
     # validation:
     # validate all checkpoints
     if ([do for do in args.do if do in ['all', 'predict', 'label',
@@ -777,8 +917,11 @@ def main():
         or 'validate_checkpoints' in args.do:
         data, output_folder = select_validation_data(config, train_folder,
                                                      val_folder)
-        checkpoints = get_checkpoint_list(config['model']['train_net_name'],
-                                          train_folder)
+        if config['validation'].get('checkpoints'):
+            checkpoints = config['validation']['checkpoints']
+        else:
+            checkpoints = get_checkpoint_list(config['model']['train_net_name'],
+                                              train_folder)
         logger.info("validating all checkpoints")
         assert len(checkpoints) > 0, "no checkpoints found!"
         checkpoint, params = validate_checkpoints(args, config, data,
@@ -787,26 +930,23 @@ def main():
                                                   output_folder)
     # validate single checkpoint
     else:
-        params = get_postprocessing_params(
-            config['postprocessing'],
-            config['postprocessing'].get('params', []))
-
-    if 'validate' in args.do:
-        if checkpoint is None:
-            if args.checkpoint is not None:
-                checkpoint = int(args.checkpoint)
-            else:
+        if 'validate' in args.do:
+            if checkpoint is None:
                 raise RuntimeError("checkpoint must be set but is None")
-        data, output_folder = select_validation_data(config, train_folder,
-                                                     val_folder)
-        _ = validate_checkpoint(args, config, data, checkpoint, params,
-                                train_folder, test_folder, output_folder)
+            data, output_folder = select_validation_data(config, train_folder,
+                                                         val_folder)
+            _ = validate_checkpoints(args, config, data, [checkpoint],
+                                     train_folder, test_folder, output_folder)
 
     if [do for do in args.do if do in ['all', 'predict', 'label',
                                        'postprocess', 'evaluate']]:
         if checkpoint is None:
             raise RuntimeError("checkpoint must be set but is None")
 
+        params = get_postprocessing_params(
+            None,
+            config['validation'].get('params', []),
+            config['vote_instances'])
         params_str = [k + "_" + str(v).replace(".", "_")
                       for k, v in params.items()]
         pred_folder = os.path.join(test_folder, 'processed', str(checkpoint))
@@ -840,14 +980,17 @@ def main():
     if 'all' in args.do or 'evaluate' in args.do:
         os.makedirs(eval_folder, exist_ok=True)
         logger.info("evaluating checkpoint %d", checkpoint)
-        metric = evaluate(args, config, config['data']['test_data'], inst_folder,
-                          eval_folder)
+        metric = evaluate(args, config, config['data']['test_data'],
+                          inst_folder, eval_folder)
         logger.info("%s TEST checkpoint %d: %.4f (%s)",
-                    config['evaluation']['metric'], checkpoint, metric, params)
+                    config['evaluation']['metric'], checkpoint, metric,
+                    params)
 
     if 'all' in args.do or 'visualize' in args.do:
         visualize()
 
+    if 'cross_validate' in args.do:
+        cross_validate(args, config, config['data']['val_data'], train_folder, val_folder)
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,7 @@ overwrite = false
 [data]
 # use absolute paths
 train_data = '/home/peter/data/datasets/data_L1/data_L1_140_all/train'
-val_data = '/home/peter/data/datasets/data_L1/data_L1_140_all/train'
+val_data = '/home/peter/data/datasets/data_L1/data_L1_140_all/val'
 test_data = '/home/peter/data/datasets/data_L1/data_L1_140_all/test'
 input_format = 'zarr'
 gt_key = 'volumes/gt_labels'
@@ -21,7 +21,7 @@ train_net_name = 'train_net'
 test_net_name = 'test_net'
 train_input_shape = [230,230,200]
 test_input_shape = [230,230,200]
-num_fmaps = 14
+num_fmaps = 10
 fmap_inc_factors = [4,4,4]
 fmap_dec_factors = [4,4,4]
 downsample_factors = [[2,2,2],[2,2,2],[2,2,2]]
@@ -30,26 +30,26 @@ padding = 'valid'
 kernel_size = 3
 num_repetitions = 2
 upsampling = 'resize_conv'
-loss_affs_coeff = 10
-loss_threeclass_coeff = 10
+loss_affs_coeff = 1
+loss_threeclass_coeff = 1
 loss_fgbg_coeff = 1
-loss_cpv_coeff = 25
+loss_cpv_coeff = 1
 
 [optimizer]
 optimizer = 'Adam'
-loss = 'ce'
+loss = 'mse'
 lr = 0.0001
 
 [training]
 batch_size = 1
 num_gpus = 1
-num_workers = 10
+num_workers = 20
 cache_size = 40
-max_iterations = 200000
+max_iterations = 100000
 checkpoints = 10000
-snapshots = 500
+snapshots = 2000
 profiling = 500
-folds = '13'
+# folds = '13'
 
 [training.augmentation.elastic]
 control_point_spacing = [10,10,10]
@@ -70,7 +70,7 @@ num_workers = 10
 output_format = 'zarr'
 
 [validation]
-fold = '1'
+# fold = '1'
 num_workers = 10
 num_dilations = [1, 2]
 fg_thresh = [0.5, 0.8, 0.95, 0.99]

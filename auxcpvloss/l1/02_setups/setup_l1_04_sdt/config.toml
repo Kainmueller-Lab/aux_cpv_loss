@@ -1,28 +1,12 @@
 [optimizer]
 loss = 'mse'
 
-[training]
-folds = '12'
-
 [validation]
-fold = '3'
-num_dilations = [1, 2]
 fg_thresh = [-0.1, -0.05, 0.0]
 seed_thresh = [-0.10, -0.13, -0.16, -0.19]
 
-[evaluation]
-metric = 'confusion_matrix/th_0_5/AP'
-res_key = 'volumes/watershed_seg_fg_dilated'
-num_workers = 8
-
-[preprocessing]
-
-[postprocessing]
-
 [postprocessing.watershed]
-num_dilations = 1
 fg_thresh = 0.0
 seed_thresh = -0.10
 surf_key = "volumes/pred_sdt"
 fgbg_key = "volumes/pred_sdt"
-raw_key = "volumes/raw_cropped"

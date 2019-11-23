@@ -3,7 +3,7 @@ import sys
 import subprocess
 
 
-def selectGPU():
+def selectGPU(quantity=1):
     ns = subprocess.Popen("nvidia-smi", stdout=subprocess.PIPE).stdout.read()
     lns = str(ns).split("\\n")
     gpuCnt = 0
@@ -30,11 +30,12 @@ def selectGPU():
                     gpuInUse.append(int(pid))
 
     # find free GPU
-    selectedGPU = None
+    selectedGPU = []
     for g in range(gpuCnt):
         if g not in gpuInUse:
-            selectedGPU = g
-            break
+            selectedGPU.append(g)
+            if len(selectedGPU) == quantity:
+                break
     return selectedGPU
 
 
