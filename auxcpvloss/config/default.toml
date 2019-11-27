@@ -71,13 +71,14 @@ output_format = 'zarr'
 
 [validation]
 # fold = '1'
+params = ['num_dilations', 'fg_thresh', 'seed_thresh']
 num_workers = 10
 num_dilations = [1, 2]
 fg_thresh = [0.5, 0.8, 0.95, 0.99]
 seed_thresh = [0.8, 0.9, 0.98, 0.99]
 
 [evaluation]
-metric = 'confusion_matrix/th_0_5/AP'
+metric = 'confusion_matrix.th_0_5.AP'
 res_key = 'volumes/watershed_seg_fg_dilated'
 num_workers = 10
 foreground_only = false
@@ -85,7 +86,6 @@ foreground_only = false
 [preprocessing]
 
 [postprocessing]
-params = ['num_dilations', 'fg_thresh', 'seed_thresh']
 output_format = 'hdf'
 include_gt = true
 num_workers = 10
