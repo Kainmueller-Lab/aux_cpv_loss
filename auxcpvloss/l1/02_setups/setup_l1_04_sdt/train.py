@@ -14,6 +14,14 @@ import gunpowder as gp
 
 logger = logging.getLogger(__name__)
 
+class NoOp(gp.BatchFilter):
+
+    def __init__(self):
+        pass
+
+    def process(self, batch, request):
+        pass
+
 
 def train_until(**kwargs):
     if tf.train.latest_checkpoint(kwargs['output_folder']):
@@ -59,7 +67,7 @@ def train_until(**kwargs):
     snapshot_request.add(raw_cropped, output_shape_world)
     snapshot_request.add(gt_sdt, output_shape_world)
     snapshot_request.add(pred_sdt, output_shape_world)
-    # snapshot_request.add(pred_sdt_gradients, output_shape_world)
+    snapshot_request.add(pred_sdt_gradients, output_shape_world)
 
 
     if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
@@ -67,17 +75,8 @@ def train_until(**kwargs):
                                   kwargs['input_format'])
 
     fls = []
-    shapes = []
     for f in kwargs['data_files']:
         fls.append(os.path.splitext(f)[0])
-        if kwargs['input_format'] == "hdf":
-            vol = h5py.File(f, 'r')['volumes/raw']
-        elif kwargs['input_format'] == "zarr":
-            vol = zarr.open(f, 'r')['volumes/raw']
-        print(f, vol.shape, vol.dtype)
-        shapes.append(vol.shape)
-        if vol.dtype != np.float32:
-            print("please convert to float32")
     ln = len(fls)
     print("first 5 files: ", fls[0:4])
 
@@ -118,24 +117,34 @@ def train_until(**kwargs):
         gp.RandomProvider() +
 
         # elastically deform the batch
-        gp.ElasticAugment(
+        (gp.ElasticAugment(
             augmentation['elastic']['control_point_spacing'],
             augmentation['elastic']['jitter_sigma'],
             [augmentation['elastic']['rotation_min']*np.pi/180.0,
-             augmentation['elastic']['rotation_max']*np.pi/180.0]) +
+             augmentation['elastic']['rotation_max']*np.pi/180.0],
+            subsample=augmentation['elastic'].get('subsample', 1)) \
+        if augmentation.get('elastic') is not None else NoOp())  +
 
         # apply transpose and mirror augmentations
         gp.SimpleAugment(mirror_only=augmentation['simple'].get("mirror"),
                          transpose_only=augmentation['simple'].get("transpose")) +
 
         # # scale and shift the intensity of the raw array
-        gp.IntensityAugment(
+        # # scale and shift the intensity of the raw array
+        (gp.IntensityAugment(
             raw,
             scale_min=augmentation['intensity']['scale'][0],
             scale_max=augmentation['intensity']['scale'][1],
             shift_min=augmentation['intensity']['shift'][0],
             shift_max=augmentation['intensity']['shift'][1],
-            z_section_wise=False) +
+            z_section_wise=False) \
+        if augmentation.get('intensity') is not None else NoOp()) +
+
+        (gp.IntensityScaleShift(
+            raw,
+            scale=augmentation['scale_shift']['scale'],
+            shift=augmentation['scale_shift']['shift']) \
+         if augmentation.get('scale_shift') is not None else NoOp()) +
 
         # pre-cache batches from the point upstream
         gp.PreCache(

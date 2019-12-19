@@ -56,7 +56,8 @@ def mk_net(**kwargs):
 
     # TODO: check sigmoid, tanh, or nothing? mse/ce?
     loss_sdt, pred_sdt, loss_sdt_print = \
-        util.get_loss(gt_sdt, pred_sdt, kwargs['loss'], "sdt", True)
+        util.get_loss(gt_sdt, pred_sdt, kwargs['loss'], "sdt", False,
+                      do_tanh=kwargs['do_tanh'])
 
     if kwargs['debug']:
         print_ops = loss_sdt_print
