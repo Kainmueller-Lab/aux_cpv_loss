@@ -29,6 +29,9 @@ def watershed(sample, surface, markers, fg, its=1):
     wsFGUI = wsFG.astype(np.uint16)
 
     wsFGUIdil = np.copy(wsFGUI)
+    if its == 0:
+        return wsUI, wsFGUI, wsFGUIdil
+
     for lbl in np.unique(wsFGUIdil):
         if lbl == 0:
             continue
@@ -57,17 +60,13 @@ def label(**kwargs):
     if kwargs['pred_format'] == "hdf":
         input_file.close()
 
-
     # threshold bg/fg
     fg = 1.0 * (fgbg > kwargs['fg_thresh'])
     if np.count_nonzero(fg) == 0:
         raise RuntimeError("{}: no foreground found".format(kwargs['sample']))
 
-    if surf.shape[0] > 1 and len(surf.shape) == 4:
-        # combine surface components
-        surf_scalar = 1.0 - 0.33 * (surf[0] + surf[1] + surf[2])
-    else:
-        surf_scalar = 1.0 - surf
+    # combine surface components
+    surf_scalar = 1.0 - 0.33 * (surf[0] + surf[1] + surf[2])
 
     # load gt
     if 'gt' in kwargs and kwargs['gt'] is not None:
@@ -84,9 +83,8 @@ def label(**kwargs):
 
     # compute markers for watershed (seeds)
     seeds = (1 * (surf > kwargs['seed_thresh'])).astype(np.uint8)
-    if surf.shape[0] > 1 and len(surf.shape) == 4:
-        seeds = (seeds[0] + seeds[1] + seeds[2])
-        seeds = (seeds > 2).astype(np.uint8)
+    seeds = (seeds[0] + seeds[1] + seeds[2])
+    seeds = (seeds > 2).astype(np.uint8)
     logger.info("%s: seeds min/max %f %f",
                  kwargs['sample'], np.min(seeds), np.max(seeds))
 

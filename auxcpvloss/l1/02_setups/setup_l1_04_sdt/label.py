@@ -12,7 +12,7 @@ import zarr
 
 logger = logging.getLogger(__name__)
 
-def watershed(sample, surface, markers, fg, outFl, its=1):
+def watershed(sample, surface, markers, fg, its=1):
     # compute watershed
     ws = mahotas.cwatershed(surface, markers)
 
@@ -20,8 +20,6 @@ def watershed(sample, surface, markers, fg, outFl, its=1):
     logger.debug("%s: watershed output: %s %s %f %f",
                  sample, ws.shape, ws.dtype, ws.max(), ws.min())
     wsUI = ws.astype(np.uint16)
-    outFl.create_dataset('volumes/watershed_seg', data=wsUI,
-                         compression='gzip')
 
     # overlay fg and write
     wsFG = ws * fg
@@ -29,17 +27,20 @@ def watershed(sample, surface, markers, fg, outFl, its=1):
                  sample, wsFG.shape, wsFG.dtype, wsFG.max(),
                  wsFG.min())
     wsFGUI = wsFG.astype(np.uint16)
-    outFl.create_dataset('volumes/watershed_seg_fg', data=wsFGUI,
-                         compression='gzip')
-    for lbl in np.unique(wsFGUI):
+
+    wsFGUIdil = np.copy(wsFGUI)
+    if its == 0:
+        return wsUI, wsFGUI, wsFGUIdil
+
+    for lbl in np.unique(wsFGUIdil):
         if lbl == 0:
             continue
-        label_mask = wsFGUI == lbl
+        label_mask = wsFGUIdil == lbl
         dilated_label_mask = scipy.ndimage.binary_dilation(label_mask,
                                                            iterations=its)
-        wsFGUI[dilated_label_mask] = lbl
-    outFl.create_dataset('volumes/watershed_seg_fg_dilated', data=wsFGUI,
-                         compression='gzip')
+        wsFGUIdil[dilated_label_mask] = lbl
+
+    return wsUI, wsFGUI, wsFGUIdil
 
 
 def label(**kwargs):
@@ -59,29 +60,15 @@ def label(**kwargs):
     if kwargs['pred_format'] == "hdf":
         input_file.close()
 
-    if kwargs['output_format'] == "hdf":
-        output_file = h5py.File(
-            os.path.join(kwargs['output_folder'],
-                         kwargs['sample'] + "."+kwargs['output_format']), 'w')
-    else:
-        raise NotImplementedError("invalid output format")
-
-    # write fgbg prediction to file
-    output_file.create_dataset('volumes/fgbg', data=fgbg,
-                               compression='gzip')
-
     # threshold bg/fg
     if kwargs['fg_thresh'] > 0:
         logger.warning("fg threshold should be zero/negative")
     fg = 1.0 * (fgbg < kwargs['fg_thresh'])
     if np.count_nonzero(fg) == 0:
-        raise RuntimeError("{}: no foreground found".format(kwargs['sample']))
+        raise RuntimeError("{}: no foreground found (th {})".format(
+            kwargs['sample'], kwargs['fg_thresh']))
 
     surf_scalar = surf
-    output_file.create_dataset('volumes/surf', data=surf_scalar,
-                               compression='gzip')
-
-    output_file.create_dataset('volumes/raw', data=raw, compression='gzip')
 
     # load gt
     if 'gt' in kwargs and kwargs['gt'] is not None:
@@ -106,38 +93,34 @@ def label(**kwargs):
     if np.count_nonzero(seeds) == 0:
         logger.warning("%s: no seed points found for watershed", sample)
 
-    output_file.create_dataset('volumes/seeds', data=seeds,
-                               compression='gzip')
     markers, cnt = scipy.ndimage.label(seeds)
     logger.debug("%s: markers min %f, max %f, cnt %f",
                  kwargs['sample'], np.min(markers), np.max(markers), cnt)
 
     # compute watershed
-    watershed(kwargs['sample'], surf_scalar, markers, fg, output_file,
-              its=kwargs['num_dilations'])
+    wsUI, wsFGUI, wsFGUIdil = watershed(kwargs['sample'], surf_scalar,
+                                        markers, fg,
+                                        its=kwargs['num_dilations'])
 
     if kwargs['output_format'] == "hdf":
-        output_file.close()
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-s', '--sample', required=True)
-    parser.add_argument('--pred_folder', required=True)
-    parser.add_argument('--pred_format', default='zarr')
-    parser.add_argument('--surf_key', default='volumes/pred_affs')
-    parser.add_argument('--fgbg_key', default='volumes/pred_fgbg')
-    parser.add_argument('--raw_key', default='volumes/raw_cropped')
-    parser.add_argument('--gt')
-    parser.add_argument('--gt_key', default='volumes/gt_labels')
-    parser.add_argument('--gt_format', default='hdf')
-    parser.add_argument('-o', '--output_folder', required=True)
-    parser.add_argument('--output_format', default='hdf')
-    parser.add_argument('-d', '--num_dilations', default=1, type=int)
-    parser.add_argument('--fg_thresh', default=0.95, type=float)
-    parser.add_argument('--surf_thresh', default=0.98, type=float)
-    args = parser.parse_args()
-    label(**vars(args))
-
-if __name__ == "__main__":
-    main()
+        out_fn = os.path.join(kwargs['output_folder'],
+                              kwargs['sample'] + "."+kwargs['output_format'])
+        with h5py.File(out_fn, 'w') as output_file:
+            # write fgbg prediction to file
+            output_file.create_dataset('volumes/fgbg', data=fgbg,
+                                       compression='gzip')
+            output_file.create_dataset('volumes/surf', data=surf_scalar,
+                                       compression='gzip')
+            output_file.create_dataset('volumes/raw', data=raw,
+                                       compression='gzip')
+            output_file.create_dataset('volumes/seeds', data=seeds,
+                                       compression='gzip')
+            output_file.create_dataset('volumes/watershed_seg', data=wsUI,
+                         compression='gzip')
+            output_file.create_dataset('volumes/watershed_seg_fg', data=wsFGUI,
+                         compression='gzip')
+            output_file.create_dataset('volumes/watershed_seg_fg_dilated',
+                                 data=wsFGUIdil,
+                                 compression='gzip')
+    else:
+        raise NotImplementedError("invalid output format")

@@ -1,15 +1,17 @@
 [optimizer]
 loss = 'mse'
+# lr = 0.001
 
 [validation]
-gauss_thresh = [0.5, 0.8, 0.95, 0.99]
+params = ["gauss_thresh"]
+gauss_thresh = [0.5, 0.7, 0.75, 0.8, 0.95]
 
 [evaluation]
 distance_limit = 9999
-metric = 'gt_pred/AP'
+metric = 'confusion_matrix.AP'
 do_detection = true
 sparse = true
 
 [postprocessing]
-params = ["gauss_thresh"]
 gauss_thresh = 0.75
+surf_key = "volumes/pred_cp"

@@ -30,6 +30,9 @@ def watershed(sample, surface, markers, fg, its=1):
     wsFGUI = wsFG.astype(np.uint16)
 
     wsFGUIdil = np.copy(wsFGUI)
+    if its == 0:
+        return wsUI, wsFGUI, wsFGUIdil
+
     for lbl in np.unique(wsFGUIdil):
         if lbl == 0:
             continue

@@ -45,8 +45,8 @@ def label(**kwargs):
     logger.debug("pixel over threshold: %s (%s)", np.argwhere(markers).shape,
                  markers.dtype)
     if np.argwhere(markers).shape[0] == 0:
-        logger.error("no blobs found for %s (0 pixel over threshold)",
-                     kwargs['sample'])
+        logger.error("no blobs found for %s (0 pixel over threshold %s)",
+                     kwargs['sample'], kwargs['gauss_thresh'])
         return
 
     # create output file
