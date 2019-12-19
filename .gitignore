@@ -15,3 +15,7 @@ flycheck*
 *.zarr
 *.csv
 *.hdf
+error_log*
+out_log*
+experimentsTmp/
+*.pickle

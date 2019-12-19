@@ -5,9 +5,9 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
-os.environ['TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_ADD'] = 'Conv3D,Conv3DBackpropFilter,Conv3DBackpropFilterV2,Conv3DBackpropInput,Conv3DBackpropInputV2,Conv2D,Conv2DBackpropFilter,Conv2DBackpropFilterV2,Conv2DBackpropInput,Conv2DBackpropInputV2'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
-os.environ['TF_CPP_VMODULE'] = 'amp_optimizer=2'
+# os.environ['TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_ADD'] = 'Conv3D,Conv3DBackpropFilter,Conv3DBackpropFilterV2,Conv3DBackpropInput,Conv3DBackpropInputV2,Conv2D,Conv2DBackpropFilter,Conv2DBackpropFilterV2,Conv2DBackpropInput,Conv2DBackpropInputV2'
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
+# os.environ['TF_CPP_VMODULE'] = 'amp_optimizer=2'
 # os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
 import argparse
 from datetime import datetime
@@ -168,6 +168,8 @@ def get_arguments():
     parser.add_argument("--validate_on_train", action="store_true",
                         help=('validate using training data'
                               '(to check for overfitting)'))
+    parser.add_argument("--do_detection", action="store_true",
+                        help='detection instead of segmentation for evaluation')
 
     # train / val / test datasets
     parser.add_argument('--input-format', dest='input_format',
@@ -201,6 +203,7 @@ def create_folders(args, filebase):
         not os.path.isdir(os.path.join(filebase, 'train'))) and \
         args.run_from_exp:
         setup = os.path.join(args.app, '02_setups', args.setup)
+        os.makedirs(filebase, exist_ok=True)
         backup_and_copy_file(setup, filebase, 'train.py')
         backup_and_copy_file(setup, filebase, 'mknet.py')
         backup_and_copy_file(setup, filebase, 'predict.py')
@@ -373,13 +376,13 @@ def predict(args, config, name, data, checkpoint, test_folder, output_folder):
         fl = os.path.join(output_folder,
                           sample + '.' + config['prediction']['output_format'])
         if not config['general']['overwrite'] and os.path.exists(fl):
-            if check_file(fl, remove_on_error=True, key="volumes/pred_fgbg"):
-                logger.info('Skipping prediction for %s. Already exists!',
-                            sample)
+            if check_file(fl, remove_on_error=True, key=config['postprocessing']['surf_key']):
+                logger.info('Skipping prediction for %s (%s). Already exists!',
+                            sample, config['postprocessing']['surf_key'])
                 continue
             else:
-                logger.info('prediction %s broken. recomputing..!',
-                            sample)
+                logger.info('prediction %s (%s) broken. recomputing..!',
+                            sample, config['postprocessing']['surf_key'])
 
         if args.debug_args and idx >= 2:
             break
@@ -441,8 +444,13 @@ def validate_checkpoint(args, config, data, checkpoint, params, train_folder,
                   for k, v in params.items()]
     inst_folder = os.path.join(output_folder, 'instanced', str(checkpoint),
                                *params_str)
-    eval_folder = os.path.join(output_folder, 'evaluated', str(checkpoint),
-                               *params_str)
+    detect_str = "detection" \
+                     if config['evaluation'].get("do_detection", False) or \
+                        args.do_detection \
+                     else ""
+    eval_folder = os.path.join(output_folder, 'evaluated',
+                               detect_str,
+                               str(checkpoint), *params_str)
     os.makedirs(inst_folder, exist_ok=True)
     os.makedirs(eval_folder, exist_ok=True)
 
@@ -479,6 +487,15 @@ def named_product(**items):
     else:
         yield {}
 
+def named_zip(**items):
+    if items:
+        names = items.keys()
+        vals = items.values()
+        for res in zip(*vals):
+            yield dict(zip(names, res))
+    else:
+        yield {}
+
 
 def validate_checkpoints(args, config, data, checkpoints, train_folder,
                          test_folder, output_folder):
@@ -487,7 +504,7 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     ckpts = []
     params = []
     results = []
-    param_sets = list(named_product(
+    param_sets = list(named_zip(
         **get_postprocessing_params(
             config['validation'],
             config['validation'].get('params', []),
@@ -528,8 +545,8 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
         best_checkpoint = ckpts[-1]
         best_params = params[-1]
     else:
-        best_checkpoint = ckpts[np.argmax(metrics)]
-        best_params = params[np.argmax(metrics)]
+        best_checkpoint = ckpts[np.nanargmax(metrics)]
+        best_params = params[np.nanargmax(metrics)]
     logger.info('best checkpoint: %d', best_checkpoint)
     logger.info('best params: %s', best_params)
     with open(os.path.join(output_folder, "results.json"), 'w') as f:
@@ -553,10 +570,12 @@ def label_sample(args, config, data, pred_folder, output_folder, params,
        os.path.exists(output_fn):
         if check_file(output_fn, remove_on_error=True,
                       key=config['evaluation']['res_key']):
-            logger.info('Skipping labelling for %s. Already exists!', sample)
+            logger.info('Skipping labelling for %s (%s). Already exists!',
+                        sample, config['evaluation']['res_key'])
             return
         else:
-            logger.info('labelling %s broken. recomputing..!', sample)
+            logger.info('labelling %s (%s) broken. recomputing..!',
+                        sample, config['evaluation']['res_key'])
 
     if config['postprocessing']['include_gt']:
         gt = os.path.join(data, sample + "." + config['data']['input_format'])
@@ -589,7 +608,7 @@ def label(args, config, data, pred_folder, output_folder, params):
                          output_folder, params, sample)
 
 
-def evaluate_sample(config, data, sample, inst_folder, output_folder,
+def evaluate_sample(args, config, data, sample, inst_folder, output_folder,
                     file_format):
     if os.path.isfile(data):
         gt_path = data
@@ -601,14 +620,13 @@ def evaluate_sample(config, data, sample, inst_folder, output_folder,
 
     sample_path = os.path.join(inst_folder, sample + "." + file_format)
 
-    if config['evaluation'].get("do_detection", False):
+    if config['evaluation'].get("do_detection", False) or args.do_detection:
         eval_fn = eval_det.evaluate_file
     else:
         eval_fn = eval_seg.evaluate_file
     return eval_fn(res_file=sample_path, gt_file=gt_path,
                    gt_key=gt_key,
                    out_dir=output_folder, suffix="",
-                   use_linear_sum_assignment=True,
                    **config['evaluation'],
                    debug=config['general']['debug'])
 
@@ -622,13 +640,13 @@ def evaluate(args, config, data, inst_folder, output_folder, return_avg=True):
     if num_workers > 1:
         metric_dicts = Parallel(n_jobs=num_workers, backend='multiprocessing',
                                 verbose=0)(
-            delayed(evaluate_sample)(config, data, s, inst_folder,
+            delayed(evaluate_sample)(args, config, data, s, inst_folder,
                                      output_folder, file_format)
             for s in samples)
     else:
         metric_dicts = []
         for sample in samples:
-            metric_dict = evaluate_sample(config, data, sample, inst_folder,
+            metric_dict = evaluate_sample(args, config, data, sample, inst_folder,
                                           output_folder, file_format)
             metric_dicts.append(metric_dict)
 
@@ -753,7 +771,15 @@ def cross_validate(args, config, data, train_folder, test_folder):
         acc1, best_setup_fold2,
         acc2, best_setup_fold1))
 
-    ap_ths = ["confusion_matrix.th_0_4.AP", "confusion_matrix.th_0_5.AP", "confusion_matrix.th_0_6.AP", "confusion_matrix.th_0_7.AP", "confusion_matrix.th_0_8.AP", "confusion_matrix.th_0_9.AP"]
+    ap_ths = ["confusion_matrix.th_0_1.AP",
+              "confusion_matrix.th_0_2.AP",
+              "confusion_matrix.th_0_3.AP",
+              "confusion_matrix.th_0_4.AP",
+              "confusion_matrix.th_0_5.AP",
+              "confusion_matrix.th_0_6.AP",
+              "confusion_matrix.th_0_7.AP",
+              "confusion_matrix.th_0_8.AP",
+              "confusion_matrix.th_0_9.AP"]
     for ap_th in ap_ths:
         metric_dicts = results[best_setup_fold2][1]
         metrics = {}
@@ -813,8 +839,11 @@ def main():
     logger.info('attention: using config file %s', args.config)
 
     if "CUDA_VISIBLE_DEVICES" not in os.environ:
-        selectedGPU = util.selectGPU(
-            quantity=config['training'].get('num_gpus', 1))
+        try:
+            selectedGPU = util.selectGPU(
+                quantity=config['training'].get('num_gpus', 1))
+        except FileNotFoundError:
+            selectedGPU = None
         if selectedGPU is None:
             logger.warning("no free GPU available!")
         else:
@@ -865,6 +894,9 @@ def main():
     backup_and_copy_file(None, base, 'config.toml')
     with open(os.path.join(base, "config.toml"), 'w') as f:
         toml.dump(config, f)
+    if args.do_detection:
+        config['evaluation']['metric'] = 'confusion_matrix.AP'
+        config['evaluation']['use_linear_sum_assignment'] = True
     if args.debug_args:
         setDebugValuesForConfig(config)
     logger.info('used config: %s', config)
@@ -903,8 +935,9 @@ def main():
                 raise
 
         if checkpoint is None and \
-            any(i in args.do for i in ['validate', 'predict', 'decode',
-                                       'label', 'evaluate', 'infer']):
+           args.test_checkpoint != 'best' and \
+           any(i in args.do for i in ['validate', 'predict', 'decode',
+                                      'label', 'evaluate', 'infer']):
             raise ValueError(
                 'Please provide a checkpoint (--checkpoint/--test-checkpoint)')
 
@@ -943,17 +976,26 @@ def main():
         if checkpoint is None:
             raise RuntimeError("checkpoint must be set but is None")
 
-        params = get_postprocessing_params(
-            None,
-            config['validation'].get('params', []),
-            config['vote_instances'])
+        if args.test_checkpoint != 'best':
+            params = get_postprocessing_params(
+                None,
+                config['validation'].get('params', []),
+                config['postprocessing'])
+            for k,v in params.items():
+                params[k] = v[0]
+
         params_str = [k + "_" + str(v).replace(".", "_")
                       for k, v in params.items()]
         pred_folder = os.path.join(test_folder, 'processed', str(checkpoint))
         inst_folder = os.path.join(test_folder, 'instanced', str(checkpoint),
                                    *params_str)
-        eval_folder = os.path.join(test_folder, 'evaluated', str(checkpoint),
-                                   *params_str)
+        detect_str = "detection" \
+                     if config['evaluation'].get("do_detection", False) or \
+                        args.do_detection \
+                     else ""
+        eval_folder = os.path.join(test_folder, 'evaluated',
+                                   detect_str,
+                                   str(checkpoint), *params_str)
 
     # predict test set
     if 'all' in args.do or 'predict' in args.do:
