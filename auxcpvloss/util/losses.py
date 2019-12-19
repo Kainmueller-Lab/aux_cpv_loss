@@ -15,11 +15,15 @@ def get_loss_fn(loss):
     return loss_fn
 
 
-def get_loss(gt, pred, loss, name, do_sigmoid):
+def get_loss(gt, pred, loss, name, do_sigmoid, do_tanh=False):
     loss_fn = get_loss_fn(loss)
 
     if do_sigmoid and loss == "mse":
         pred = tf.sigmoid(pred)
+    if do_tanh:
+        assert loss == "mse", "tanh only with mse loss"
+        assert not do_sigmoid, "either sigmoid or tanh for net output"
+        pred = tf.tanh(pred)
     loss = loss_fn(
         gt,
         pred)
