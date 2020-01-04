@@ -63,7 +63,7 @@ def label(**kwargs):
     # threshold bg/fg
     fg = 1.0 * (fgbg > kwargs['fg_thresh'])
     if np.count_nonzero(fg) == 0:
-        raise RuntimeError("{}: no foreground found".format(kwargs['sample']))
+        logger.warning("{}: no foreground found".format(kwargs['sample']))
 
     # combine surface components
     surf_scalar = 1.0 - 0.33 * (surf[0] + surf[1] + surf[2])

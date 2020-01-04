@@ -22,6 +22,50 @@ class NoOp(gp.BatchFilter):
     def process(self, batch, request):
         pass
 
+class NormalizeMinMax(gp.BatchFilter):
+
+    def __init__(self, array, mn, mx, dtype=np.float32):
+
+        self.array = array
+        self.mn = mn
+        self.mx = mx
+        self.dtype = dtype
+
+    def process(self, batch, request):
+        if self.array not in batch.arrays:
+            return
+
+        array = batch.arrays[self.array]
+        array.data = array.data.astype(self.dtype)
+        array.data = (array.data - self.mn) / (self.mx - self.mn)
+        array.data = array.data.astype(self.dtype)
+
+class Clip(gp.BatchFilter):
+
+    def __init__(self, array, mn=None, mx=None):
+
+        self.array = array
+        self.mn = mn
+        self.mx = mx
+
+    def process(self, batch, request):
+
+        if self.mn is None and self.mx is None:
+            return
+
+        if self.array not in batch.arrays:
+            return
+
+        array = batch.arrays[self.array]
+
+
+        if self.mn is None:
+            self.mn = np.min(array.data)
+        if self.mx is None:
+            self.mx = np.max(array.data)
+
+        array.data = np.clip(array.data, self.mn, self.mx)
+
 
 def train_until(**kwargs):
     if tf.train.latest_checkpoint(kwargs['output_folder']):
@@ -75,6 +119,8 @@ def train_until(**kwargs):
 
     fls = []
     shapes = []
+    mn = []
+    mx = []
     for f in kwargs['data_files']:
         fls.append(os.path.splitext(f)[0])
         if kwargs['input_format'] == "hdf":
@@ -83,6 +129,8 @@ def train_until(**kwargs):
             vol = zarr.open(f, 'r')['volumes/raw']
         print(f, vol.shape, vol.dtype)
         shapes.append(vol.shape)
+        mn.append(np.min(vol))
+        mx.append(np.max(vol))
         if vol.dtype != np.float32:
             print("please convert to float32")
     ln = len(fls)
@@ -114,6 +162,8 @@ def train_until(**kwargs):
                  gp.Coordinate(shapes[t])))
          ))
         + gp.MergeProvider()
+        # + Clip(raw, mn=mn[t], mx=mx[t])
+        # + NormalizeMinMax(raw, mn=mn[t], mx=mx[t])
         + gp.Pad(raw, None)
         + gp.Pad(points, None)
 

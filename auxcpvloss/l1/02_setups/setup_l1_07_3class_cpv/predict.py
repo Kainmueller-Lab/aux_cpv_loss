@@ -17,6 +17,7 @@ def predict(**kwargs):
     pred_threeclass = gp.ArrayKey('PRED_THREECLASS')
     pred_class_max = gp.ArrayKey('PRED_CLASS_MAX')
     pred_fgbg = gp.ArrayKey('PRED_FGBG')
+    pred_cpv = gp.ArrayKey('PRED_CPV')
 
     with open(os.path.join(kwargs['input_folder'],
                            name + '_config.json'), 'r') as f:
@@ -37,6 +38,7 @@ def predict(**kwargs):
     request.add(pred_threeclass, output_shape_world)
     request.add(pred_class_max, output_shape_world)
     request.add(pred_fgbg, output_shape_world)
+    request.add(pred_cpv, output_shape_world)
 
     if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
         raise NotImplementedError("predict node for %s not implemented yet",
@@ -85,6 +87,14 @@ def predict(**kwargs):
     zf['volumes/pred_fgbg'].attrs['offset'] = [0, 0, 0]
     zf['volumes/pred_fgbg'].attrs['resolution'] = kwargs['voxel_size']
 
+    # create pred cpv dataset
+    zf.create('volumes/pred_cpv',
+              shape=[3] + list(shape),
+              chunks=[3] + list(shape),
+              dtype=np.float32)
+    zf['volumes/pred_cpv'].attrs['offset'] = [0, 0, 0]
+    zf['volumes/pred_cpv'].attrs['resolution'] = kwargs['voxel_size']
+
     zf.create('volumes/raw_cropped',
               shape=[1] + list(shape),
               chunks=[1] + list(shape),
@@ -111,6 +121,7 @@ def predict(**kwargs):
                 net_names['pred_threeclass']: pred_threeclass,
                 net_names['pred_class_max']: pred_class_max,
                 net_names['pred_fgbg']: pred_fgbg,
+                net_names['pred_cpv']: pred_cpv,
                 net_names['raw_cropped']: raw_cropped
             }) +
 
@@ -121,6 +132,7 @@ def predict(**kwargs):
                 pred_threeclass: '/volumes/pred_threeclass',
                 pred_class_max: '/volumes/pred_class_max',
                 pred_fgbg: '/volumes/pred_fgbg',
+                pred_cpv: '/volumes/pred_cpv',
             },
             output_dir=kwargs['output_folder'],
             output_filename=kwargs['sample'] + ".zarr",

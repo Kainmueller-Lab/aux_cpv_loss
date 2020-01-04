@@ -66,7 +66,7 @@ def mk_net(**kwargs):
     elif kwargs['loss'] == "ce":
         lossFn = tf.losses.sigmoid_cross_entropy
 
-    cond = tf.less(gt_cpTmp, 0.5)
+    cond = tf.less(gt_cpTmp, 0.01)
     weight = tf.where(cond,
                       tf.constant(0.00001, dtype=tf.float32,
                                   shape=pred_cp.get_shape()),

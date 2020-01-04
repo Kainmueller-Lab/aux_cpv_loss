@@ -65,7 +65,8 @@ def label(**kwargs):
     # threshold bg/fg
     fg = 1.0 * (fgbg > kwargs['fg_thresh'])
     if np.count_nonzero(bg) == 0:
-        raise RuntimeError("{}: no foreground found".format(kwargs['sample']))
+        logger.warning("%s: no foreground found (th %s)",
+                       kwargs['sample'], kwargs['fg_thresh'])
 
     surf = scipy.special.softmax(surf, axis=0)
     surf_scalar = 1.0 - surf[1, ...]
@@ -89,7 +90,8 @@ def label(**kwargs):
                  kwargs['sample'], np.min(seeds), np.max(seeds))
 
     if np.count_nonzero(seeds) == 0:
-        logger.warning("%s: no seed points found for watershed", sample)
+        logger.warning("%s: no seed points found for watershed (th %s)",
+                       sample, kwargs['seed_thresh'])
 
     markers, cnt = scipy.ndimage.label(seeds)
     logger.debug("%s: markers min %f, max %f, cnt %f",

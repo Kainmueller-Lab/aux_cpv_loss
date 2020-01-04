@@ -32,6 +32,8 @@ def watershed(sample, surface, markers, fg, its=1):
     if its == 0:
         return wsUI, wsFGUI, wsFGUIdil
 
+    lbls = np.unique(wsFGUIdil)
+    logger.info("%s: counts: %s", sample, len(lbls))
     for lbl in np.unique(wsFGUIdil):
         if lbl == 0:
             continue
@@ -40,6 +42,8 @@ def watershed(sample, surface, markers, fg, its=1):
                                                            iterations=its)
         wsFGUIdil[dilated_label_mask] = lbl
 
+    lbls = np.unique(wsFGUIdil)
+    logger.info("%s: counts after: %s", sample, len(lbls))
     return wsUI, wsFGUI, wsFGUIdil
 
 
@@ -60,13 +64,17 @@ def label(**kwargs):
     if kwargs['pred_format'] == "hdf":
         input_file.close()
 
+
     # threshold bg/fg
     fg = 1.0 * (fgbg > kwargs['fg_thresh'])
     if np.count_nonzero(fg) == 0:
         raise RuntimeError("{}: no foreground found".format(kwargs['sample']))
 
-    # combine surface components
-    surf_scalar = 1.0 - 0.33 * (surf[0] + surf[1] + surf[2])
+    if surf.shape[0] > 1 and len(surf.shape) == 4:
+        # combine surface components
+        surf_scalar = 1.0 - 0.33 * (surf[0] + surf[1] + surf[2])
+    else:
+        surf_scalar = 1.0 - surf
 
     # load gt
     if 'gt' in kwargs and kwargs['gt'] is not None:
@@ -82,9 +90,32 @@ def label(**kwargs):
                      kwargs['sample'], gt_labels.min(), gt_labels.max())
 
     # compute markers for watershed (seeds)
-    seeds = (1 * (surf > kwargs['seed_thresh'])).astype(np.uint8)
-    seeds = (seeds[0] + seeds[1] + seeds[2])
-    seeds = (seeds > 2).astype(np.uint8)
+    if kwargs.get("use_cpv_for_seeds", False):
+        if kwargs['pred_format'] == "zarr":
+            input_file = zarr.open(sample, 'r')
+        elif kwargs['pred_format'] == "hdf":
+            input_file = h5py.File(sample, 'r')
+        cpv = np.array(input_file[kwargs['cpv_key']])
+        print(cpv.shape, surf.shape)
+        if kwargs['pred_format'] == "hdf":
+            input_file.close()
+        cp = np.zeros(cpv.shape[1:], dtype=np.int32)
+        for z in range(cp.shape[0]):
+            for y in range(cp.shape[1]):
+                for x in range(cp.shape[2]):
+                    dz = int(round(cpv[0,z,y,x]))
+                    dy = int(round(cpv[1,z,y,x]))
+                    dx = int(round(cpv[2,z,y,x]))
+                    zz = max(0, min(cp.shape[0]-1, z+dz))
+                    yy = max(0, min(cp.shape[1]-1, y+dy))
+                    xx = max(0, min(cp.shape[2]-1, x+dx))
+                    cp[zz, yy, xx] += 1
+        seeds = (1 * (cp > kwargs['cpv_thresh'])).astype(np.uint8)
+    else:
+        seeds = (1 * (surf > kwargs['seed_thresh'])).astype(np.uint8)
+        if surf.shape[0] > 1 and len(surf.shape) == 4:
+            seeds = (seeds[0] + seeds[1] + seeds[2])
+            seeds = (seeds > 2).astype(np.uint8)
     logger.info("%s: seeds min/max %f %f",
                  kwargs['sample'], np.min(seeds), np.max(seeds))
 
@@ -92,8 +123,8 @@ def label(**kwargs):
         logger.warning("%s: no seed points found for watershed", sample)
 
     markers, cnt = scipy.ndimage.label(seeds)
-    logger.debug("%s: markers min %f, max %f, cnt %f",
-                 kwargs['sample'], np.min(markers), np.max(markers), cnt)
+    logger.info("%s: markers min %f, max %f, cnt %f",
+                kwargs['sample'], np.min(markers), np.max(markers), cnt)
 
     # compute watershed
     wsUI, wsFGUI, wsFGUIdil = watershed(kwargs['sample'], surf_scalar,
@@ -120,5 +151,9 @@ def label(**kwargs):
             output_file.create_dataset('volumes/watershed_seg_fg_dilated',
                                  data=wsFGUIdil,
                                  compression='gzip')
+            if kwargs.get("use_cpv_for_seeds", False):
+                output_file.create_dataset('volumes/cp',
+                                           data=cp,
+                                           compression='gzip')
     else:
         raise NotImplementedError("invalid output format")

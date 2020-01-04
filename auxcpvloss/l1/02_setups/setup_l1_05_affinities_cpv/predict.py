@@ -72,7 +72,7 @@ def predict(**kwargs):
     zf['volumes/pred_affs'].attrs['offset'] = [0, 0, 0]
     zf['volumes/pred_affs'].attrs['resolution'] = kwargs['voxel_size']
 
-    # create pred affs dataset
+    # create pred fgbg dataset
     zf.create('volumes/pred_fgbg',
               shape=[1] + list(shape),
               chunks=[1] + list(shape),
@@ -80,7 +80,7 @@ def predict(**kwargs):
     zf['volumes/pred_fgbg'].attrs['offset'] = [0, 0, 0]
     zf['volumes/pred_fgbg'].attrs['resolution'] = kwargs['voxel_size']
 
-    # create pred affs dataset
+    # create pred cpv dataset
     zf.create('volumes/pred_cpv',
               shape=[3] + list(shape),
               chunks=[3] + list(shape),
@@ -88,7 +88,7 @@ def predict(**kwargs):
     zf['volumes/pred_cpv'].attrs['offset'] = [0, 0, 0]
     zf['volumes/pred_cpv'].attrs['resolution'] = kwargs['voxel_size']
 
-    # create pred affs dataset
+    # create raw dataset
     zf.create('volumes/raw_cropped',
               shape=[1] + list(shape),
               chunks=[1] + list(shape),
