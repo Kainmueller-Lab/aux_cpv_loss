@@ -895,8 +895,9 @@ def main():
     with open(os.path.join(base, "config.toml"), 'w') as f:
         toml.dump(config, f)
     if args.do_detection:
-        config['evaluation']['metric'] = 'confusion_matrix.AP'
-        config['evaluation']['use_linear_sum_assignment'] = True
+        config['evaluation']['metric'] = 'confusion_matrix.hoefener.AP'
+        config['evaluation']['use_linear_sum_assignment'] = False
+        config['evaluation']['detection'] = "hoefener"
     if args.debug_args:
         setDebugValuesForConfig(config)
     logger.info('used config: %s', config)
