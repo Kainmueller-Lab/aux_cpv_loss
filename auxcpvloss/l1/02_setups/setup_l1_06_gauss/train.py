@@ -183,16 +183,18 @@ def train_until(**kwargs):
             augmentation['elastic']['control_point_spacing'],
             augmentation['elastic']['jitter_sigma'],
             [augmentation['elastic']['rotation_min']*np.pi/180.0,
-             augmentation['elastic']['rotation_max']*np.pi/180.0]) \
-        if augmentation.get('elastic') is not None and \
-           augmentation.get('elastic') != {} else NoOp())  +
+             augmentation['elastic']['rotation_max']*np.pi/180.0],
+            subsample=augmentation['elastic'].get('subsample', 1)) \
+        if augmentation.get('elastic') is not None else NoOp())  +
 
         # apply transpose and mirror augmentations
-        (gp.SimpleAugment(
-            mirror_only=augmentation['simple'].get("mirror"),
-            transpose_only=augmentation['simple'].get("transpose")) \
-        if augmentation.get('simple') is not None and \
-           augmentation.get('simple') != {} else NoOp())  +
+        gp.SimpleAugment(mirror_only=augmentation['simple'].get("mirror"),
+                         transpose_only=augmentation['simple'].get("transpose")) +
+        # (gp.SimpleAugment(
+        #     mirror_only=augmentation['simple'].get("mirror"),
+        #     transpose_only=augmentation['simple'].get("transpose")) \
+        # if augmentation.get('simple') is not None and \
+        #    augmentation.get('simple') != {} else NoOp())  +
 
         # # scale and shift the intensity of the raw array
         (gp.IntensityAugment(

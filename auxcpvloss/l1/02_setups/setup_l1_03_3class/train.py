@@ -14,6 +14,14 @@ import gunpowder as gp
 
 logger = logging.getLogger(__name__)
 
+class NoOp(gp.BatchFilter):
+
+    def __init__(self):
+        pass
+
+    def process(self, batch, request):
+        pass
+
 
 def train_until(**kwargs):
     if tf.train.latest_checkpoint(kwargs['output_folder']):
@@ -123,11 +131,13 @@ def train_until(**kwargs):
         gp.RandomProvider() +
 
         # elastically deform the batch
-        gp.ElasticAugment(
+        (gp.ElasticAugment(
             augmentation['elastic']['control_point_spacing'],
             augmentation['elastic']['jitter_sigma'],
             [augmentation['elastic']['rotation_min']*np.pi/180.0,
-             augmentation['elastic']['rotation_max']*np.pi/180.0]) +
+             augmentation['elastic']['rotation_max']*np.pi/180.0],
+            subsample=augmentation['elastic'].get('subsample', 1)) \
+        if augmentation.get('elastic') is not None else NoOp())  +
 
         # apply transpose and mirror augmentations
         gp.SimpleAugment(mirror_only=augmentation['simple'].get("mirror"),
