@@ -198,6 +198,7 @@ def train_until(**kwargs):
                 raw: '/volumes/raw',
                 raw_cropped: 'volumes/raw_cropped',
                 gt_threeclass: '/volumes/gt_threeclass',
+                pred_threeclass: '/volumes/pred_threeclass',
             },
             output_dir=os.path.join(kwargs['output_folder'], 'snapshots'),
             output_filename='batch_{iteration}.hdf',

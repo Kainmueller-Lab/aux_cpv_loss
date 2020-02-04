@@ -123,8 +123,8 @@ def get_arguments():
     parser.add_argument('--out-format', dest='out_format', default="hdf",
                         help='format of output files')
     parser.add_argument('-p', '--parallel', default=1, type=int)
-    parser.add_argument('--raw-min', dest='raw_min', type=int)
-    parser.add_argument('--raw-max', dest='raw_max', type=int)
+    parser.add_argument('--raw-min', dest='raw_min', type=float)
+    parser.add_argument('--raw-max', dest='raw_max', type=float)
     parser.add_argument('--scale-sdt', dest='scale_sdt', type=float, default=-9)
     parser.add_argument('--sigma', type=float, default=2)
     parser.add_argument('--normalize', default='minmax',

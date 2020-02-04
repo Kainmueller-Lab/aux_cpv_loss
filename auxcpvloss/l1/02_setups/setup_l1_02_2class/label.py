@@ -63,7 +63,8 @@ def label(**kwargs):
     # threshold bg/fg
     fg = 1.0 * (fgbg > kwargs['fg_thresh'])
     if np.count_nonzero(fg) == 0:
-        raise RuntimeError("{}: no foreground found".format(kwargs['sample']))
+        logger.warning("%s: no foreground found (th %s)",
+                       kwargs['sample'], kwargs['fg_thresh'])
 
     surf_scalar = 1.0 - surf
 
