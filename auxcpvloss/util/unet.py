@@ -136,9 +136,16 @@ def upsample(fmaps_in, factors, num_fmaps, activation='relu', name='up',
             (num_fmaps_out * num_fmaps_in,),
             dtype=tf.float32)
         # (1, 1, 1, num_fmaps_out, num_fmaps_in)
-        kernel_variables = tf.reshape(
-            kernel_variables,
-            (1, 1, 1) + (num_fmaps_out, num_fmaps_in))
+        if fmaps_in.get_shape().ndims - 2 == 2:
+            data_format = 'NCHW'
+            kernel_variables = tf.reshape(
+                kernel_variables,
+                (1, 1) + (num_fmaps_out, num_fmaps_in))
+        else:
+            data_format = 'NCDHW'
+            kernel_variables = tf.reshape(
+                kernel_variables,
+                (1, 1, 1) + (num_fmaps_out, num_fmaps_in))
         # (f_z, f_y_ f_x, num_fmaps_out, num_fmaps_in)
         constant_upsample_filter = repeat(
             kernel_variables,
@@ -150,7 +157,7 @@ def upsample(fmaps_in, factors, num_fmaps, activation='relu', name='up',
             output_shape=out_shape,
             strides=(1, 1) + tuple(factors),
             padding='VALID',
-            data_format='NCDHW',
+            data_format=data_format,
             name=name)
 
     elif upsampling == "trans_conv":
