@@ -170,6 +170,8 @@ def get_arguments():
                               '(to check for overfitting)'))
     parser.add_argument("--do_detection", action="store_true",
                         help='detection instead of segmentation for evaluation')
+    parser.add_argument("--param_product", action="store_true",
+                        help='build product of validation params (instead of zipped list)')
 
     # train / val / test datasets
     parser.add_argument('--input-format', dest='input_format',
@@ -504,7 +506,11 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     ckpts = []
     params = []
     results = []
-    param_sets = list(named_zip(
+    if args.param_product:
+        get_param_func = named_zip
+    else:
+        get_param_func = named_product
+    param_sets = list(get_param_func(
         **get_postprocessing_params(
             config['validation'],
             config['validation'].get('params', []),
