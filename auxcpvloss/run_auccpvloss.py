@@ -632,7 +632,8 @@ def evaluate_sample(args, config, data, sample, inst_folder, output_folder,
 
 
 @time_func
-def evaluate(args, config, data, inst_folder, output_folder, return_avg=True):
+def evaluate(args, config, data, inst_folder, output_folder, return_avg=True,
+             returnIoUavg=None):
     file_format = config['postprocessing']['output_format']
     samples = natsorted(get_list_samples(config, inst_folder, file_format))
 
@@ -652,20 +653,43 @@ def evaluate(args, config, data, inst_folder, output_folder, return_avg=True):
 
     metrics = {}
     metrics_full = {}
-    for metric_dict, sample in zip(metric_dicts, samples):
-        if metric_dict is None:
-            continue
-        metrics_full[sample] = metric_dict
-        for k in config['evaluation']['metric'].split('.'):
-            metric_dict = metric_dict[k]
-        logger.info("%s sample %-19s: %.4f",
-                    config['evaluation']['metric'], sample, float(metric_dict))
-        metrics[sample] = float(metric_dict)
+    if returnIoUavg is None:
+        for metric_dict, sample in zip(metric_dicts, samples):
+            if metric_dict is None:
+                continue
+            metrics_full[sample] = metric_dict
+            for k in config['evaluation']['metric'].split('.'):
+                metric_dict = metric_dict[k]
+            logger.info("%s sample %-19s: %.4f",
+                        config['evaluation']['metric'], sample, float(metric_dict))
+            metrics[sample] = float(metric_dict)
+    else:
+        for metric_dict, sample in zip(metric_dicts, samples):
+            if metric_dict is None:
+                continue
+            metric_dict = metric_dict['confusion_matrix']
+            metric = 0.0
+            if returnIoUavg == "full":
+                returnIoUavg = '123456789'
+            for t in range(1, 10):
+                if str(t) in returnIoUavg:
+                    metric += metric_dict['th_0_' + str(t)]['AP']
+            metric /= len(returnIoUavg)
+            logger.info("confusion_matrix.avg.th_0_%s.AP sample %-19s: %.4f",
+                        returnIoUavg, sample, float(metric))
+        metrics[sample] = float(metric)
 
     if 'summary' in config['evaluation'].keys():
+        tmp_metric_dicts = []
+        tmp_samples = []
+        for metric_dict, sample in zip(metric_dicts, samples):
+            if "eft3RW10035L1_0125072" not in sample and \
+               "unc54L1_0123072" not in sample:
+                tmp_metric_dicts.append(metric_dict)
+                tmp_samples.append(sample)
         eval_seg.summarize_metric_dict(
-            metric_dicts,
-            samples,
+            tmp_metric_dicts,
+            tmp_samples,
             config['evaluation']['summary'],
             os.path.join(output_folder, 'summary.csv')
         )
