@@ -1,5 +1,0 @@
-[optimizer]
-loss = 'ce'
-
-[postprocessing]
-surf_key = "volumes/pred_fgbg"
