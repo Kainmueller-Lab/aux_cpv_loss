@@ -1,3 +1,6 @@
+# based on Jan Funke's U-Net implementation:
+# https://github.com/funkelab/funlib.learn.tensorflow
+
 import tensorflow as tf
 import numpy as np
 

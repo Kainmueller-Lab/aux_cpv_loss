@@ -1,5 +1,6 @@
+### Instance Segmentation
 https://github.com/Kainmueller-Lab/evaluate-instance-segmentation
+(or alternatively https://github.com/uschmidt83/matching)
 
-or
-
-https://github.com/uschmidt83/matching
+### Instance Detection
+https://github.com/Kainmueller-Lab/evaluate-instance-detection

@@ -2,7 +2,11 @@ from setuptools import setup, find_packages
 
 setup(
     name='auxcpvloss',
-    version='1.0',
+    version='0.1',
+    description='compare 3d instance segmentation methods (affinities, 3-label, signed distance transform) with and without additional auxiliary task (regress vectors to center of instance)',
+    url='https://github.com/Kainmueller-Lab/aux_cpv_loss',
+    author='Peter Hirsch',
+    author_email='kainmuellerlab@mdc-berlin.de',
     install_requires=[
         'toml',
         'absl-py',
@@ -10,7 +14,11 @@ setup(
         'pandas',
         'natsort',
         'mahotas',
+        'pandas',
+        'numpy',
+        'h5py',
         'zarr',
         'tifffile',
+        'tensorflow-gpu==1.14'
     ],
     packages=find_packages())
