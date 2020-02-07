@@ -507,9 +507,9 @@ def validate_checkpoints(args, config, data, checkpoints, train_folder,
     params = []
     results = []
     if args.param_product:
-        get_param_func = named_zip
-    else:
         get_param_func = named_product
+    else:
+        get_param_func = named_zip
     param_sets = list(get_param_func(
         **get_postprocessing_params(
             config['validation'],
