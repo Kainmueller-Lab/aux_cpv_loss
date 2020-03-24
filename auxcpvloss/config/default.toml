@@ -46,9 +46,9 @@ batch_size = 1
 num_gpus = 1
 num_workers = 10
 cache_size = 40
-max_iterations = 50000
-checkpoints = 10000
-snapshots = 10000
+max_iterations = 400000
+checkpoints = 20000
+snapshots = 2000
 profiling = 500
 # folds = '13'
 
@@ -90,6 +90,17 @@ res_key = 'volumes/watershed_seg_fg_dilated'
 num_workers = 10
 foreground_only = false
 use_linear_sum_assignment = true
+summary = [
+        "confusion_matrix.th_0_1.AP",
+        "confusion_matrix.th_0_2.AP",
+        "confusion_matrix.th_0_3.AP",
+        "confusion_matrix.th_0_4.AP",
+        "confusion_matrix.th_0_5.AP",
+        "confusion_matrix.th_0_6.AP",
+        "confusion_matrix.th_0_7.AP",
+        "confusion_matrix.th_0_8.AP",
+        "confusion_matrix.th_0_9.AP"
+]
 
 [preprocessing]
 
