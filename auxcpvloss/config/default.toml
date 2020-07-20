@@ -19,6 +19,8 @@ voxel_size = [1,1,1]
 [model]
 train_net_name = 'train_net'
 test_net_name = 'test_net'
+# train_input_shape = [236,236,204]
+# test_input_shape = [236,236,204]
 train_input_shape = [230,230,200]
 test_input_shape = [230,230,200]
 num_fmaps = 10

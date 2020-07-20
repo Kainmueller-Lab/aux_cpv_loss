@@ -120,6 +120,8 @@ def train_until(**kwargs):
             + gp.MergeProvider()
             + gp.Pad(raw, None)
             + gp.Pad(gt_threeclass, None)
+            + gp.Pad(anchor, gp.Coordinate((2,2,2)))
+
 
             # chose a random location for each requested batch
             + gp.RandomLocation()

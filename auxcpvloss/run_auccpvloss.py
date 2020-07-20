@@ -683,7 +683,7 @@ def evaluate(args, config, data, inst_folder, output_folder, return_avg=True,
             metric /= len(returnIoUavg)
             logger.info("confusion_matrix.avg.th_0_%s.AP sample %-19s: %.4f",
                         returnIoUavg, sample, float(metric))
-        metrics[sample] = float(metric)
+            metrics[sample] = float(metric)
 
     if 'summary' in config['evaluation'].keys():
         tmp_metric_dicts = []
@@ -928,6 +928,7 @@ def main():
         config['evaluation']['metric'] = 'confusion_matrix.hoefener.AP'
         config['evaluation']['use_linear_sum_assignment'] = False
         config['evaluation']['detection'] = "hoefener"
+        config['evaluation']['summary'] = [ "confusion_matrix.hoefener.AP",]
     if args.debug_args:
         setDebugValuesForConfig(config)
     logger.info('used config: %s', config)

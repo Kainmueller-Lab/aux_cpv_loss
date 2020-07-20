@@ -58,6 +58,16 @@ def predict(**kwargs):
             raw: 'volumes/raw'
         })
 
+    crop = []
+    for d in range(-3, 0):
+        if shape[d] < net_config['output_shape'][d]:
+            crop.append((net_config['output_shape'][d]-shape[d])//2)
+        else:
+            crop.append(0)
+    print("cropping", crop)
+    context += gp.Coordinate(crop)
+
+
     if kwargs['output_format'] != "zarr":
         raise NotImplementedError("Please use zarr as prediction output")
     # pre-create zarr file

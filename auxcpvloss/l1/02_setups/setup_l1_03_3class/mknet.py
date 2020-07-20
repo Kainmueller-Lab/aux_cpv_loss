@@ -4,7 +4,7 @@ import json
 import tensorflow as tf
 
 from auxcpvloss import util
-
+from funlib.learn.tensorflow.models import unet, conv_pass, crop
 
 def mk_net(**kwargs):
 
@@ -20,23 +20,23 @@ def mk_net(**kwargs):
     # create a U-Net
     raw_batched = tf.reshape(raw, (1, 1) + input_shape)
     # unet_output = unet(raw_batched, 14, 4, [[1,3,3],[1,3,3],[1,3,3]])
-    model = util.unet(raw_batched,
-                      num_fmaps=kwargs['num_fmaps'],
-                      fmap_inc_factors=kwargs['fmap_inc_factors'],
-                      fmap_dec_factors=kwargs['fmap_dec_factors'],
-                      downsample_factors=kwargs['downsample_factors'],
-                      activation=kwargs['activation'],
-                      padding=kwargs['padding'],
-                      kernel_size=kwargs['kernel_size'],
-                      num_repetitions=kwargs['num_repetitions'],
-                      upsampling=kwargs['upsampling'])
+    model, _, _ = unet(raw_batched,
+                       num_fmaps=kwargs['num_fmaps'],
+                       fmap_inc_factors=kwargs['fmap_inc_factors'],
+                       fmap_dec_factors=kwargs['fmap_dec_factors'],
+                       downsample_factors=kwargs['downsample_factors'],
+                       activation=kwargs['activation'],
+                       padding=kwargs['padding'],
+                       kernel_size=kwargs['kernel_size'],
+                       num_repetitions=kwargs['num_repetitions'],
+                       upsampling=kwargs['upsampling'],
+                       crop_factor=kwargs.get('crop_factor', True))
     print(model)
 
-    model = util.conv_pass(
+    model, _ = conv_pass(
         model,
-        kernel_size=1,
+        kernel_sizes=[1],
         num_fmaps=3,
-        num_repetitions=1,
         padding=kwargs['padding'],
         activation=None,
         name="output")
@@ -51,7 +51,7 @@ def mk_net(**kwargs):
     pred_fgbg = tf.nn.softmax(pred_threeclass, dim=0)[0]
     pred_fgbg = tf.expand_dims(pred_fgbg, 0)
 
-    raw_cropped = util.crop(raw, output_shape)
+    raw_cropped = crop(raw, output_shape)
     raw_cropped = tf.expand_dims(raw_cropped, 0)
 
     # create a placeholder for the corresponding ground-truth
