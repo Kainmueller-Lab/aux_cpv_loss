@@ -19,6 +19,6 @@ setup(
         'h5py',
         'zarr',
         'tifffile',
-        'tensorflow-gpu==1.14'
+        'tensorflow-gpu==2.5.1'
     ],
     packages=find_packages())
