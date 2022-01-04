@@ -21,6 +21,8 @@ def selectGPU(quantity=1):
             n = lns[idx+1]
             if "GPU" in n and "PID" in n:
                 for idx in range(idx+3, len(lns)):
+                    if "|==========" in lns[idx]:
+                        continue
                     if "+----------" in lns[idx]:
                         break
                     ln = lns[idx]

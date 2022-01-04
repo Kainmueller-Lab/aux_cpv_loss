@@ -47,7 +47,7 @@ def normalize_percentile(x, pmin=3, pmax=99.8, axis=None, clip=False,
                          eps=1e-20, dtype=np.float32):
     mi = np.percentile(x, pmin, axis=axis, keepdims=True)
     ma = np.percentile(x, pmax, axis=axis, keepdims=True)
-    print("min/max", mi, ma, np.min(x), np.max(x))
+    # print("min/max", mi, ma, np.min(x), np.max(x))
     return normalize_min_max(x, mi, ma, clip=clip, eps=eps, dtype=dtype)
 
 
@@ -75,32 +75,32 @@ def normalize_min_max(x, mi, ma, clip=False, eps=1e-20, dtype=np.float32):
 
 
 def normalize(args, raw, sample):
-    print("{} before norm {}: min {}, max {}, mean {}, std {}, median {}".format(
-        sample, args.normalize, np.min(raw), np.max(raw), np.mean(raw),
-        np.std(raw), np.median(raw)))
+    # print("{} before norm {}: min {}, max {}, mean {}, std {}, median {}".format(
+    #     sample, args.normalize, np.min(raw), np.max(raw), np.mean(raw),
+        # np.std(raw), np.median(raw)))
 
     if args.normalize == "minmax":
         raw = normalize_min_max(raw, args.raw_min, args.raw_max)
     elif args.normalize == "percentile":
         raw = normalize_percentile(raw, args.raw_min, args.raw_max)
 
-    print("{} after norm {}:  min {}, max {}, mean {}, std {}, median {}".format(
-        sample, args.normalize, np.min(raw), np.max(raw), np.mean(raw),
-        np.std(raw), np.median(raw)))
+    # print("{} after norm {}:  min {}, max {}, mean {}, std {}, median {}".format(
+    #     sample, args.normalize, np.min(raw), np.max(raw), np.mean(raw),
+    #     np.std(raw), np.median(raw)))
     return raw
 
 
 def preprocess(args, raw, sample):
-    print("{} before preproc {}: skew {}".format(
-        sample, args.preprocess, scipy.stats.skew(raw.ravel())))
+    # print("{} before preproc {}: skew {}".format(
+    #     sample, args.preprocess, scipy.stats.skew(raw.ravel())))
     if args.preprocess is None or args.preprocess == "no":
         pass
     elif args.preprocess == "square":
         raw = np.square(raw)
     elif args.preprocess == "cuberoot":
         raw = np.cbrt(raw)
-    print("{} after preproc {}:  skew {}".format(
-        sample, args.preprocess, scipy.stats.skew(raw.ravel())))
+    # print("{} after preproc {}:  skew {}".format(
+    #     sample, args.preprocess, scipy.stats.skew(raw.ravel())))
     return raw
 
 
@@ -158,16 +158,26 @@ def work(args, sample):
     print("Processing {}, {}".format(args.in_dir, sample))
     out_fn = os.path.join(args.out_dir, sample)
 
-    raw_fn = os.path.join(args.in_dir, "imagesAsMhdRaw", sample + ".mhd")
-    raw = load_array(raw_fn).astype(np.float32)
+    # if "C50F7_5SD1583L1_0615081" not in sample:
+    #     return
+    try:
+        raw_fn = os.path.join(args.in_dir, "imagesAsMhdRaw", sample + ".mhd")
+        raw = load_array(raw_fn).astype(np.float32)
+    except:
+        raw_fn = os.path.join(args.in_dir, "imagesAsTiff", sample + ".tiff")
+        raw = load_array(raw_fn).astype(np.float32)
     raw = preprocess(args, raw, sample)
     raw = normalize(args, raw, sample)
     raw = pad(args, raw, 'mode')
 
     labels_fn = os.path.join(args.in_dir, "groundTruthInstanceSeg",
                              sample + ".ano.curated.tiff")
+    print(raw_fn, labels_fn)
+
     gt_labels = load_array(labels_fn).astype(np.uint16)
+    # print("labels cnt {}, min {}, max {}".format(len(np.unique(gt_labels)), np.min(gt_labels), np.max(gt_labels)))
     gt_labels = pad(args, gt_labels, 'constant')
+    # gt_labels = (gt_labels % 255).astype(np.uint8)
 
     gt_labels_tmp = np.zeros((gt_labels.shape[0]+1,
                               gt_labels.shape[1]+1,

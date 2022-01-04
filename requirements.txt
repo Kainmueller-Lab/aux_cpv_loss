@@ -1,0 +1,12 @@
+absl-py
+h5py
+joblib
+malis
+mahotas
+natsort
+numpy
+pandas
+tensorflow-gpu==1.15
+tifffile
+zarr
+-e git+https://github.com/Kainmueller-Lab/gunpowder@a53bb55edc2d28a1acb310971571984cf0771cab#egg=gunpowder
