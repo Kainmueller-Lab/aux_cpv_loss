@@ -1,5 +1,5 @@
 # An Auxiliary Task for Learning Nuclei Segmentation in 3D Microscopy Images
-
+PDF and short video: https://2020.midl.io/papers/hirsch20.html
 ![Overview: Illustration of the benefit of center point vectors as auxiliary training task](./figure.png "Auxiliary Task")
 
 ## tldr
@@ -25,8 +25,8 @@ As an additional, practical contribution, we benchmark nuclei segmentation again
 ## Usage
 
 ``` shell
-    python run_auccpvloss.py --root experiments -s setup_l1_07_3class_cpv -c config/default.toml -c l1/02_setups/setup_kaggle_07_3class_cpv/config.toml -a l1 -d mknet train validate_checkpoints predict label evaluate --run_from_exp --test-checkpoint best
+    python run_auxcpvloss.py --root experiments -s setup_l1_07_3class_cpv -c config/default.toml -c l1/02_setups/setup_kaggle_07_3class_cpv/config.toml -a l1 -d mknet train validate_checkpoints predict label evaluate --run_from_exp --test-checkpoint best
 ```
 
-- use the `run_auccpvloss.py` script to define what task to run where
+- use the `run_auxcpvloss.py` script to define what task to run where
 - use the toml config files to define the network and post-processing parameters
