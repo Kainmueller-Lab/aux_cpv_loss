@@ -42,7 +42,7 @@ import pandas as pd
 import toml
 import zarr
 
-from auxcpvloss import util
+import util
 import evaluateInstanceSegmentation as eval_seg
 import evaluateInstanceDetection as eval_det
 
@@ -211,10 +211,14 @@ def create_folders(args, filebase):
         backup_and_copy_file(setup, filebase, 'predict.py')
         backup_and_copy_file(setup, filebase, 'label.py')
 
+
+
     # create train folders
     train_folder = os.path.join(filebase, 'train')
     os.makedirs(train_folder, exist_ok=True)
     os.makedirs(os.path.join(train_folder, 'snapshots'), exist_ok=True)
+    backup_and_copy_file(setup, train_folder, 'train_net_config.json')
+    backup_and_copy_file(setup, train_folder, 'train_net_names.json')
 
     # create val folders
     val_folder = os.path.join(filebase, 'val')
@@ -305,6 +309,7 @@ def train(args, config, train_folder):
              data_files=data_files,
              **config['data'],
              **config['training'],
+             **config['optimizer'],
              **config['preprocessing'])
 
 
