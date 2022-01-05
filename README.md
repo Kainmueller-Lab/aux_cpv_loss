@@ -1,5 +1,7 @@
 # An Auxiliary Task for Learning Nuclei Segmentation in 3D Microscopy Images
 
+![Overview: Illustration of the benefit of center point vectors as auxiliary training task](./figure.png "Auxiliary Task")
+
 ## tldr
 - CNN based models for nuclei segmentation in 3d
 - multiple methods
