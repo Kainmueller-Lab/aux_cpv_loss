@@ -2,7 +2,6 @@ from __future__ import print_function
 import json
 import logging
 import os
-import sys
 import time
 
 import h5py
@@ -13,6 +12,7 @@ import zarr
 import gunpowder as gp
 
 logger = logging.getLogger(__name__)
+
 
 class NoOp(gp.BatchFilter):
 
@@ -43,12 +43,11 @@ def train_until(**kwargs):
 
     pred_threeclass_gradients = gp.ArrayKey('PRED_THREECLASS_GRADIENTS')
 
-
     with open(os.path.join(kwargs['output_folder'],
                            kwargs['name'] + '_config.json'), 'r') as f:
         net_config = json.load(f)
     with open(os.path.join(kwargs['output_folder'],
-                           kwargs['name']  + '_names.json'), 'r') as f:
+                           kwargs['name'] + '_names.json'), 'r') as f:
         net_names = json.load(f)
 
     voxel_size = gp.Coordinate(kwargs['voxel_size'])
@@ -71,7 +70,6 @@ def train_until(**kwargs):
     snapshot_request.add(gt_threeclass, output_shape_world)
     snapshot_request.add(pred_threeclass, output_shape_world)
     # snapshot_request.add(pred_threeclass_gradients, output_shape_world)
-
 
     if kwargs['input_format'] != "hdf" and kwargs['input_format'] != "zarr":
         raise NotImplementedError("train node for {} not implemented".format(
@@ -120,7 +118,7 @@ def train_until(**kwargs):
             + gp.MergeProvider()
             + gp.Pad(raw, None)
             + gp.Pad(gt_threeclass, None)
-            + gp.Pad(anchor, gp.Coordinate((2,2,2)))
+            # + gp.Pad(anchor, gp.Coordinate((2, 2, 2)))
 
 
             # chose a random location for each requested batch
@@ -139,11 +137,12 @@ def train_until(**kwargs):
             [augmentation['elastic']['rotation_min']*np.pi/180.0,
              augmentation['elastic']['rotation_max']*np.pi/180.0],
             subsample=augmentation['elastic'].get('subsample', 1)) \
-        if augmentation.get('elastic') is not None else NoOp())  +
+         if augmentation.get('elastic') is not None else NoOp()) +
 
         # apply transpose and mirror augmentations
-        gp.SimpleAugment(mirror_only=augmentation['simple'].get("mirror"),
-                         transpose_only=augmentation['simple'].get("transpose")) +
+        gp.SimpleAugment(
+            mirror_only=augmentation['simple'].get("mirror"),
+            transpose_only=augmentation['simple'].get("transpose")) +
 
         # # scale and shift the intensity of the raw array
         gp.IntensityAugment(

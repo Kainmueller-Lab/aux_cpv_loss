@@ -1,13 +1,12 @@
 from __future__ import print_function
 import json
-import logging
 import os
-import sys
 
 import gunpowder as gp
 import h5py
 import numpy as np
 import zarr
+
 
 def predict(**kwargs):
     name = kwargs['name']
@@ -54,19 +53,18 @@ def predict(**kwargs):
     source = sourceNode(
         os.path.join(kwargs['data_folder'],
                      kwargs['sample'] + "." + kwargs['input_format']),
-        datasets = {
+        datasets={
             raw: 'volumes/raw'
         })
 
-    crop = []
-    for d in range(-3, 0):
-        if shape[d] < net_config['output_shape'][d]:
-            crop.append((net_config['output_shape'][d]-shape[d])//2)
-        else:
-            crop.append(0)
-    print("cropping", crop)
-    context += gp.Coordinate(crop)
-
+    # crop = []
+    # for d in range(-3, 0):
+    #     if shape[d] < net_config['output_shape'][d]:
+    #         crop.append((net_config['output_shape'][d]-shape[d])//2)
+    #     else:
+    #         crop.append(0)
+    # print("cropping", crop)
+    # context += gp.Coordinate(crop)
 
     if kwargs['output_format'] != "zarr":
         raise NotImplementedError("Please use zarr as prediction output")
@@ -101,7 +99,6 @@ def predict(**kwargs):
               dtype=np.float32)
     zf['volumes/raw_cropped'].attrs['offset'] = [0, 0, 0]
     zf['volumes/raw_cropped'].attrs['resolution'] = kwargs['voxel_size']
-
 
     pipeline = (
 
